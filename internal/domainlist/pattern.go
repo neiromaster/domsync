@@ -31,6 +31,11 @@ func NormalizePattern(raw string) (string, error) {
 	if strings.IndexFunc(trimmed, unicode.IsSpace) >= 0 {
 		return "", fmt.Errorf("pattern %q contains internal whitespace: %w", raw, ErrInvalidPattern)
 	}
+	for _, r := range trimmed {
+		if r < 0x20 || r == 0x7F {
+			return "", fmt.Errorf("pattern %q contains control character %q (U+%04X): %w", raw, r, r, ErrInvalidPattern)
+		}
+	}
 
 	lowered := strings.ToLower(trimmed)
 	parts := strings.Split(lowered, ".")
