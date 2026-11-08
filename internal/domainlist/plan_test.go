@@ -18,14 +18,6 @@ func local(t *testing.T, src string) *LocalFile {
 	return lf
 }
 
-func patterns(plan *Plan) []string {
-	var out []string
-	for _, s := range plan.Sections {
-		out = append(out, s.Patterns...)
-	}
-	return append(out, plan.Flat...)
-}
-
 func TestBuildPlanUnionPutsRemoteOnlyInOther(t *testing.T) {
 	plan, err := BuildPlan(Input{
 		Local:        local(t, "[media]\n+.a.com\n"),
@@ -60,6 +52,22 @@ func TestBuildPlanMove(t *testing.T) {
 	}
 	if len(plan.Sections[0].Patterns) != 0 {
 		t.Fatalf("media should be empty: %+v", plan.Sections[0])
+	}
+}
+
+func TestBuildPlanMoveWithoutRemoteIsNotAMove(t *testing.T) {
+	plan, err := BuildPlan(Input{
+		Local:        local(t, "[media]\n-+.s.com\n[misc]\n+.s.com\n"),
+		OtherSection: "other",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.LocalMoved) != 0 {
+		t.Fatalf("moved = %+v, want none", plan.LocalMoved)
+	}
+	if !reflect.DeepEqual(plan.RouterAdded, []string{"+.s.com"}) {
+		t.Fatalf("router added = %v", plan.RouterAdded)
 	}
 }
 
@@ -126,6 +134,13 @@ func TestBuildPlanErrors(t *testing.T) {
 	}
 }
 
+func TestBuildPlanRequiresOtherSection(t *testing.T) {
+	_, err := BuildPlan(Input{Local: local(t, "[media]\n+.a.com\n")})
+	if err == nil || !strings.Contains(err.Error(), "other_section") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestBuildPlanFlatAppendsRemote(t *testing.T) {
 	plan, err := BuildPlan(Input{Local: local(t, "+.a.com\n"), Remote: []string{"+.z.com"}})
 	if err != nil {
@@ -162,6 +177,19 @@ func TestGoldenBasic(t *testing.T) {
 	}
 	if got := RenderRemote(plan); !bytes.Equal(got, read("want-remote.txt")) {
 		t.Fatalf("remote render mismatch:\n%s", got)
+	}
+	if !reflect.DeepEqual(plan.LocalAdded, []string{"+.old-domain.com"}) {
+		t.Fatalf("local added = %v", plan.LocalAdded)
+	}
+	wantMoves := []Move{{Pattern: "+.servarr.com", From: "media", To: "misc"}}
+	if !reflect.DeepEqual(plan.LocalMoved, wantMoves) {
+		t.Fatalf("local moved = %+v", plan.LocalMoved)
+	}
+	if !reflect.DeepEqual(plan.RouterAdded, []string{"+.example.org"}) {
+		t.Fatalf("router added = %v", plan.RouterAdded)
+	}
+	if len(plan.RouterRemoved) != 0 {
+		t.Fatalf("router removed = %v, want none", plan.RouterRemoved)
 	}
 }
 

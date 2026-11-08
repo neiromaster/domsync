@@ -17,6 +17,9 @@ func BuildPlan(in Input) (*Plan, error) {
 	if localFile == nil {
 		return nil, errors.New("local domain list is empty")
 	}
+	if localFile.HasSections && in.OtherSection == "" {
+		return nil, errors.New("other_section must be set when the local file has sections")
+	}
 
 	positives := make(map[string]string, len(localFile.Flat))
 	for _, section := range localFile.Sections {
