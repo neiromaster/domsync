@@ -50,10 +50,14 @@ type ErrorInfo struct {
 }
 
 func Failure(code int, err error) *Report {
+	message := ""
+	if err != nil {
+		message = err.Error()
+	}
 	return &Report{
 		OK:       false,
 		Warnings: []string{},
 		Commands: []Command{},
-		Error:    &ErrorInfo{Code: code, Message: err.Error()},
+		Error:    &ErrorInfo{Code: code, Message: message},
 	}
 }
