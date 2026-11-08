@@ -20,10 +20,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	_, err = parser.Parse(args)
-	// Kong validates before returning, so a --version-only invocation fails with a
-	// missing-command error; flags are applied before validation, so cli.Version is set.
-	if err != nil && !cli.Version {
+	if _, err := parser.Parse(args); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}

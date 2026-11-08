@@ -16,3 +16,7 @@ type CLI struct {
 type UpdateCmd struct {
 	Check bool `help:"Only check for a newer version."`
 }
+
+func (c *CLI) Run() error {
+	return nil
+}

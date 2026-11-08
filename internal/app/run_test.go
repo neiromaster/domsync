@@ -26,3 +26,13 @@ func TestRunUnknownFlag(t *testing.T) {
 		t.Fatal("expected an error on stderr")
 	}
 }
+
+func TestRunVersionDoesNotMaskBadFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--version", "--nope"}, strings.NewReader(""), &stdout, &stderr); code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 || stderr.Len() == 0 {
+		t.Fatalf("stdout = %q, stderr = %q", stdout.String(), stderr.String())
+	}
+}
