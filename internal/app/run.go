@@ -11,6 +11,7 @@ import (
 	"github.com/neiromaster/domsync/internal/config"
 	"github.com/neiromaster/domsync/internal/report"
 	"github.com/neiromaster/domsync/internal/sshclient"
+	"github.com/neiromaster/domsync/internal/update"
 	"github.com/neiromaster/domsync/internal/version"
 	"golang.org/x/term"
 )
@@ -44,14 +45,24 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "domsync %s\n", version.String())
 		return 0
 	}
+	if ctx.Command() == "update" {
+		return runUpdate(context.Background(), cli, stdout, stderr)
+	}
 	return runSync(context.Background(), cli, stdout, stderr)
 }
 
 func runSync(ctx context.Context, cli CLI, stdout, stderr io.Writer) int {
+	var checker *update.Checker
+	if !cli.NoUpdateCheck {
+		checker = newChecker()
+	}
 	rep, err := Sync(ctx, SyncOptions{
-		ConfigPath: cli.Config,
-		Strict:     cli.Strict,
-		DryRun:     cli.DryRun,
+		ConfigPath:  cli.Config,
+		Strict:      cli.Strict,
+		DryRun:      cli.DryRun,
+		CheckUpdate: !cli.NoUpdateCheck,
+		Verbose:     cli.Verbose,
+		Checker:     checker,
 	}, dialConfig)
 	if err != nil {
 		code := ExitCode(err)
@@ -80,6 +91,10 @@ func runSync(ctx context.Context, cli CLI, stdout, stderr io.Writer) int {
 	}
 	if !cli.Quiet {
 		report.Human(stdout, rep)
+		if rep.Update != nil && rep.Update.Available {
+			fmt.Fprintf(stderr, "domsync: доступна %s (у вас %s). Обновление: domsync update\n",
+				rep.Update.Latest, rep.Update.Current)
+		}
 	}
 	return 0
 }

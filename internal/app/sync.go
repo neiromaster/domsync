@@ -15,6 +15,8 @@ import (
 	"github.com/neiromaster/domsync/internal/domainlist"
 	"github.com/neiromaster/domsync/internal/report"
 	"github.com/neiromaster/domsync/internal/sshclient"
+	"github.com/neiromaster/domsync/internal/update"
+	"github.com/neiromaster/domsync/internal/version"
 )
 
 type Runner interface {
@@ -25,9 +27,12 @@ type Runner interface {
 }
 
 type SyncOptions struct {
-	ConfigPath string
-	Strict     bool
-	DryRun     bool
+	ConfigPath  string
+	Strict      bool
+	DryRun      bool
+	CheckUpdate bool
+	Verbose     bool
+	Checker     *update.Checker
 }
 
 const maxLocalSize = 10 << 20
@@ -107,6 +112,7 @@ func Sync(ctx context.Context, opts SyncOptions, dial func(context.Context, conf
 		Commands: []report.Command{},
 	}
 	if opts.DryRun {
+		checkForUpdate(ctx, opts, cfg, rep)
 		return rep, nil
 	}
 
@@ -140,7 +146,30 @@ func Sync(ctx context.Context, opts SyncOptions, dial func(context.Context, conf
 		rep.OK = false
 		return rep, withCode(1, err)
 	}
+	checkForUpdate(ctx, opts, cfg, rep)
 	return rep, nil
+}
+
+func checkForUpdate(ctx context.Context, opts SyncOptions, cfg *config.Config, rep *report.Report) {
+	if !opts.CheckUpdate || opts.Checker == nil || !cfg.Update.CheckEnabled() {
+		return
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	info, err := opts.Checker.Check(checkCtx, version.Version)
+	if err != nil {
+		if opts.Verbose {
+			rep.Warnings = append(rep.Warnings, "проверка обновления: "+err.Error())
+		}
+		return
+	}
+	if info.Available {
+		rep.Update = &report.UpdateInfo{
+			Current:   info.Current,
+			Latest:    info.Latest,
+			Available: true,
+		}
+	}
 }
 
 func readLocal(path string) ([]byte, error) {
