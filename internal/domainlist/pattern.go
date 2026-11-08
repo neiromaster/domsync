@@ -64,5 +64,16 @@ func NormalizePattern(raw string) (string, error) {
 			return "", fmt.Errorf("pattern %q misplaces '*': it must occupy a whole label: %w", raw, ErrInvalidPattern)
 		}
 	}
+	for _, part := range parts {
+		if part == "" || part == "+" || part == "*" {
+			continue
+		}
+		for _, r := range part {
+			if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_' || r == '-' {
+				continue
+			}
+			return "", fmt.Errorf("pattern %q has invalid character %q in label %q: %w", raw, r, part, ErrInvalidPattern)
+		}
+	}
 	return lowered, nil
 }
