@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	maxChecksumsSize = 1 << 20
-	maxArchiveSize   = 100 << 20
-	archiveFormat    = "checksums.txt"
+	maxReleaseSize     = 1 << 20
+	maxChecksumsSize   = 1 << 20
+	maxArchiveSize     = 100 << 20
+	checksumsAssetName = "checksums.txt"
 )
 
 type ApplyOptions struct {
@@ -59,7 +60,7 @@ func Apply(ctx context.Context, opts ApplyOptions) (string, error) {
 		return "", fmt.Errorf("update: release %s has no asset %q", release.TagName, archiveName)
 	}
 	if checksumsURL == "" {
-		return "", fmt.Errorf("update: release %s has no %s asset", release.TagName, archiveFormat)
+		return "", fmt.Errorf("update: release %s has no %s asset", release.TagName, checksumsAssetName)
 	}
 	checksums, err := download(ctx, client, checksumsURL, opts.Current, maxChecksumsSize)
 	if err != nil {
@@ -67,7 +68,7 @@ func Apply(ctx context.Context, opts ApplyOptions) (string, error) {
 	}
 	want, ok := checksumFor(checksums, archiveName)
 	if !ok {
-		return "", fmt.Errorf("update: %s has no entry for %s", archiveFormat, archiveName)
+		return "", fmt.Errorf("update: %s has no entry for %s", checksumsAssetName, archiveName)
 	}
 	archive, err := download(ctx, client, archiveURL, opts.Current, maxArchiveSize)
 	if err != nil {
@@ -104,7 +105,7 @@ func fetchRelease(ctx context.Context, client *http.Client, url, current string)
 		return nil, fmt.Errorf("update: GET %s: unexpected status %s", url, resp.Status)
 	}
 	var release githubRelease
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxChecksumsSize)).Decode(&release); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxReleaseSize)).Decode(&release); err != nil {
 		return nil, fmt.Errorf("update: GET %s: %w", url, err)
 	}
 	if release.TagName == "" {
@@ -118,7 +119,7 @@ func assetURLs(assets []releaseAsset, archiveName string) (archiveURL, checksums
 		switch asset.Name {
 		case archiveName:
 			archiveURL = asset.BrowserDownloadURL
-		case archiveFormat:
+		case checksumsAssetName:
 			checksumsURL = asset.BrowserDownloadURL
 		}
 	}
