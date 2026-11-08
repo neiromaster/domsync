@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strconv"
@@ -239,6 +240,10 @@ func (c *Client) ReadFile(ctx context.Context, path string) ([]byte, error) {
 }
 
 func (c *Client) Run(ctx context.Context, command string, timeout time.Duration) (CommandResult, error) {
+	return c.runWithStdin(ctx, command, nil, timeout)
+}
+
+func (c *Client) runWithStdin(ctx context.Context, command string, stdin io.Reader, timeout time.Duration) (CommandResult, error) {
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
@@ -252,6 +257,7 @@ func (c *Client) Run(ctx context.Context, command string, timeout time.Duration)
 	var stdout, stderr bytes.Buffer
 	session.Stdout = &stdout
 	session.Stderr = &stderr
+	session.Stdin = stdin
 	if err := session.Start(command); err != nil {
 		return CommandResult{}, fmt.Errorf("start command: %w", err)
 	}
