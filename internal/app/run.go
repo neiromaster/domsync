@@ -15,14 +15,23 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		kong.Name("domsync"),
 		kong.Description("Sync a local domain list to an OpenClash rule-provider file."),
 		kong.Writers(stdout, stderr),
+		kong.NoDefaultHelp(),
 	)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	if _, err := parser.Parse(args); err != nil {
+	ctx, err := parser.Parse(args)
+	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
+	}
+	if cli.Help {
+		if err := ctx.PrintUsage(false); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return 0
 	}
 	if cli.Version {
 		fmt.Fprintf(stdout, "domsync %s\n", version.String())

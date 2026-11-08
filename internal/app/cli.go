@@ -9,6 +9,7 @@ type CLI struct {
 	DryRun        bool   `name:"dry-run" help:"Compute and report without writing."`
 	NoUpdateCheck bool   `name:"no-update-check" help:"Skip the update check."`
 	Version       bool   `name:"version" help:"Print version and exit."`
+	Help          bool   `short:"h" help:"Show help and exit."`
 
 	Update *UpdateCmd `cmd:"" help:"Update domsync to the latest release."`
 }

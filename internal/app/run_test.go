@@ -36,3 +36,13 @@ func TestRunVersionDoesNotMaskBadFlag(t *testing.T) {
 		t.Fatalf("stdout = %q, stderr = %q", stdout.String(), stderr.String())
 	}
 }
+
+func TestRunHelp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--help"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Usage: domsync") || stderr.Len() != 0 {
+		t.Fatalf("stdout = %q, stderr = %q", stdout.String(), stderr.String())
+	}
+}
