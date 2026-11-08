@@ -25,7 +25,7 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go tool golangci-lint run
-      - run: 'test -z "$(gofmt -l ./cmd ./internal)"'
+      - run: go tool golangci-lint fmt --diff
   vuln:
     runs-on: ubuntu-latest
     steps:
@@ -57,3 +57,5 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/dependency-review-action@v5.0.0
+        with:
+          fail-on-severity: high
