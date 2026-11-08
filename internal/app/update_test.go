@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -150,6 +151,88 @@ func TestRunUpdateCheckJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !doc.OK || doc.Update == nil || !doc.Update.Available || doc.Update.Latest != "v1.1.0" || doc.Update.Current != "v1.0.0" {
+		t.Fatalf("doc = %+v in %s", doc, out.String())
+	}
+}
+
+func TestRunDispatchesUpdateCommand(t *testing.T) {
+	oldDetect, oldNew := detectInstall, newChecker
+	defer func() { detectInstall, newChecker = oldDetect, oldNew }()
+	detectInstall = func(string) update.InstallKind { return update.InstallStandalone }
+	withVersion(t, "v1.0.0")
+	srv := newTagServer(t, "v1.1.0")
+	newChecker = func() *update.Checker { return stubChecker(t, srv) }
+	var out, errOut bytes.Buffer
+	code := Run([]string{"update", "--check"}, strings.NewReader(""), &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%q", code, errOut.String())
+	}
+	if want := "Текущая версия: v1.0.0\nДоступна v1.1.0\n"; out.String() != want {
+		t.Fatalf("out=%q want=%q", out.String(), want)
+	}
+}
+
+func TestRunUpdateApplySuccess(t *testing.T) {
+	oldDetect, oldApply := detectInstall, applyUpdate
+	defer func() { detectInstall, applyUpdate = oldDetect, oldApply }()
+	detectInstall = func(string) update.InstallKind { return update.InstallStandalone }
+	withVersion(t, "v1.0.0")
+	var gotOpts update.ApplyOptions
+	applyUpdate = func(_ context.Context, opts update.ApplyOptions) (string, error) {
+		gotOpts = opts
+		return "v1.1.0", nil
+	}
+	var out, errOut bytes.Buffer
+	code := runUpdate(t.Context(), CLI{Update: &UpdateCmd{}}, &out, &errOut)
+	if code != 0 || errOut.Len() != 0 {
+		t.Fatalf("code=%d err=%q", code, errOut.String())
+	}
+	if want := "domsync обновлён до v1.1.0\n"; out.String() != want {
+		t.Fatalf("out=%q want=%q", out.String(), want)
+	}
+	if gotOpts.BaseURL != updateBaseURL || gotOpts.Repo != updateRepo ||
+		gotOpts.Current != "v1.0.0" || gotOpts.GOOS != runtime.GOOS || gotOpts.GOARCH != runtime.GOARCH ||
+		gotOpts.Target == "" {
+		t.Fatalf("opts = %+v", gotOpts)
+	}
+}
+
+func TestRunUpdateApplyFailure(t *testing.T) {
+	oldDetect, oldApply := detectInstall, applyUpdate
+	defer func() { detectInstall, applyUpdate = oldDetect, oldApply }()
+	detectInstall = func(string) update.InstallKind { return update.InstallStandalone }
+	withVersion(t, "v1.0.0")
+	applyUpdate = func(context.Context, update.ApplyOptions) (string, error) {
+		return "", errors.New("checksum mismatch")
+	}
+	var out, errOut bytes.Buffer
+	code := runUpdate(t.Context(), CLI{Update: &UpdateCmd{}}, &out, &errOut)
+	if code != 4 || out.Len() != 0 || !strings.Contains(errOut.String(), "checksum mismatch") {
+		t.Fatalf("code=%d out=%q err=%q", code, out.String(), errOut.String())
+	}
+}
+
+func TestRunUpdateApplyJSONSuccess(t *testing.T) {
+	oldDetect, oldApply := detectInstall, applyUpdate
+	defer func() { detectInstall, applyUpdate = oldDetect, oldApply }()
+	detectInstall = func(string) update.InstallKind { return update.InstallStandalone }
+	withVersion(t, "v1.0.0")
+	applyUpdate = func(context.Context, update.ApplyOptions) (string, error) { return "v1.1.0", nil }
+	var out, errOut bytes.Buffer
+	code := runUpdate(t.Context(), CLI{Update: &UpdateCmd{}, JSON: true}, &out, &errOut)
+	if code != 0 || errOut.Len() != 0 {
+		t.Fatalf("code=%d err=%q", code, errOut.String())
+	}
+	var doc struct {
+		OK     bool               `json:"ok"`
+		Update *report.UpdateInfo `json:"update"`
+		Error  *report.ErrorInfo  `json:"error"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if !doc.OK || doc.Error != nil || doc.Update == nil ||
+		doc.Update.Current != "v1.1.0" || doc.Update.Latest != "v1.1.0" || doc.Update.Available {
 		t.Fatalf("doc = %+v in %s", doc, out.String())
 	}
 }

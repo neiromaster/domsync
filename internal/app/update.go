@@ -16,6 +16,7 @@ import (
 var (
 	detectInstall = update.DetectInstall
 	newChecker    = update.NewChecker
+	applyUpdate   = update.Apply
 )
 
 const (
@@ -64,7 +65,7 @@ func runUpdateCheck(ctx context.Context, cli CLI, stdout, stderr io.Writer) int 
 }
 
 func runUpdateApply(ctx context.Context, cli CLI, execPath string, stdout, stderr io.Writer) int {
-	tag, err := update.Apply(ctx, update.ApplyOptions{
+	tag, err := applyUpdate(ctx, update.ApplyOptions{
 		BaseURL: updateBaseURL,
 		Repo:    updateRepo,
 		Current: version.Version,
