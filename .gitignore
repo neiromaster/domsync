@@ -1,0 +1,5 @@
+/dist/
+/cover.out
+/cover-domain.out
+*.test
+.domsync*.tmp
