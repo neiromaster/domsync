@@ -23,9 +23,12 @@ func Human(w io.Writer, r *Report) {
 		writeFileDelta(w, "локально", r.Local, true, r.DryRun)
 	}
 	for _, command := range r.Commands {
-		if command.ExitCode == 0 {
+		switch {
+		case command.Error != "":
+			fmt.Fprintf(w, "  команда: %s — ошибка: %s\n", command.Command, command.Error)
+		case command.ExitCode == 0:
 			fmt.Fprintf(w, "  команда: %s — ok, %s\n", command.Command, commandDuration(command.DurationMS))
-		} else {
+		default:
 			fmt.Fprintf(w, "  команда: %s — ошибка %d\n", command.Command, command.ExitCode)
 		}
 	}

@@ -35,6 +35,7 @@ type Command struct {
 	ExitCode   int    `json:"exit_code"`
 	Stdout     string `json:"stdout,omitempty"`
 	Stderr     string `json:"stderr,omitempty"`
+	Error      string `json:"error,omitempty"`
 	DurationMS int64  `json:"duration_ms"`
 }
 

@@ -54,22 +54,22 @@ func runSync(ctx context.Context, cli CLI, stdout, stderr io.Writer) int {
 		DryRun:     cli.DryRun,
 	}, dialConfig)
 	if err != nil {
+		code := ExitCode(err)
 		if rep == nil {
-			rep = report.Failure(ExitCode(err), err)
+			rep = report.Failure(code, err)
 		} else {
 			rep.OK = false
-			rep.Error = &report.ErrorInfo{Code: ExitCode(err), Message: err.Error()}
+			rep.Error = &report.ErrorInfo{Code: code, Message: err.Error()}
 		}
 		if cli.JSON {
-			if err := report.JSON(stdout, rep); err != nil {
-				fmt.Fprintln(stderr, err)
-				return 1
+			if encErr := report.JSON(stdout, rep); encErr != nil {
+				fmt.Fprintln(stderr, encErr)
 			}
 		} else {
 			report.Human(stderr, rep)
 		}
 		fmt.Fprintln(stderr, "domsync:", err)
-		return ExitCode(err)
+		return code
 	}
 	if cli.JSON {
 		if err := report.JSON(stdout, rep); err != nil {

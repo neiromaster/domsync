@@ -171,13 +171,17 @@ func runPostWrite(ctx context.Context, runner Runner, cfg *config.Config, rep *r
 	for _, command := range post.Commands {
 		start := time.Now()
 		result, err := runner.Run(ctx, command, timeout)
-		rep.Commands = append(rep.Commands, report.Command{
+		entry := report.Command{
 			Command:    command,
 			ExitCode:   result.ExitCode,
 			Stdout:     result.Stdout,
 			Stderr:     result.Stderr,
 			DurationMS: time.Since(start).Milliseconds(),
-		})
+		}
+		if err != nil {
+			entry.Error = err.Error()
+		}
+		rep.Commands = append(rep.Commands, entry)
 		if err != nil {
 			return withCode(5, fmt.Errorf("command %q: %w", command, err))
 		}

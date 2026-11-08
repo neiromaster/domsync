@@ -1,7 +1,9 @@
 package app
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/neiromaster/domsync/internal/config"
+	"github.com/neiromaster/domsync/internal/report"
 	"github.com/neiromaster/domsync/internal/sshclient"
 )
 
@@ -134,5 +137,32 @@ func TestSyncCommandFailure(t *testing.T) {
 	rep, err := Sync(context.Background(), SyncOptions{ConfigPath: cfgPath}, func(context.Context, config.Config) (Runner, error) { return f, nil })
 	if err == nil || ExitCode(err) != 5 {
 		t.Fatalf("error = %v, report=%+v", err, rep)
+	}
+}
+
+func TestSyncTransportCommandFailureReported(t *testing.T) {
+	cfgPath, f := setup(t, "[media]\n+.a.com\n", "")
+	f.cmdErr = errors.New("connection lost")
+	rep, err := Sync(context.Background(), SyncOptions{ConfigPath: cfgPath}, func(context.Context, config.Config) (Runner, error) { return f, nil })
+	if err == nil || ExitCode(err) != 5 || rep == nil {
+		t.Fatalf("error = %v, report=%+v", err, rep)
+	}
+	var human bytes.Buffer
+	report.Human(&human, rep)
+	if !strings.Contains(human.String(), "ошибка: connection lost") || strings.Contains(human.String(), " — ok") {
+		t.Fatalf("human = %q", human.String())
+	}
+	var jsonBuf bytes.Buffer
+	if err := report.JSON(&jsonBuf, rep); err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Commands []report.Command `json:"commands"`
+	}
+	if err := json.Unmarshal(jsonBuf.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Commands) != 1 || doc.Commands[0].Error != "connection lost" {
+		t.Fatalf("commands = %+v in %s", doc.Commands, jsonBuf.String())
 	}
 }
