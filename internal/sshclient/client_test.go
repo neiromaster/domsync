@@ -79,15 +79,18 @@ func TestUnknownHostKeyRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := Dial(context.Background(), Options{Host: env.Host, Port: env.Port, User: "u", KeyPath: env.KeyPath, KnownHosts: empty})
-	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "known") {
-		t.Fatalf("error = %v, want host key error", err)
+	if err == nil {
+		t.Fatal("expected host key error")
 	}
 	presented := ssh.FingerprintSHA256(knownHostKey(t, env.KnownHostsPath))
-	if !strings.Contains(err.Error(), presented) {
+	if !strings.Contains(err.Error(), "SHA256:") || !strings.Contains(err.Error(), presented) {
 		t.Fatalf("error = %v, want presented fingerprint %s", err, presented)
 	}
 	if !strings.Contains(err.Error(), "ssh-keyscan") {
 		t.Fatalf("error = %v, want ssh-keyscan hint", err)
+	}
+	if !errors.As(err, new(*knownhosts.KeyError)) {
+		t.Fatalf("error = %v, want *knownhosts.KeyError in chain", err)
 	}
 }
 
@@ -120,6 +123,9 @@ func TestChangedHostKeyReportsFingerprints(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(err.Error()), "changed") {
 		t.Fatalf("error = %v, want changed-key message", err)
+	}
+	if !errors.As(err, new(*knownhosts.KeyError)) {
+		t.Fatalf("error = %v, want *knownhosts.KeyError in chain", err)
 	}
 }
 

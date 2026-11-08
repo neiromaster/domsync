@@ -150,13 +150,13 @@ func hostKeyCallback(opts Options) (ssh.HostKeyCallback, error) {
 		}
 		presented := ssh.FingerprintSHA256(key)
 		if len(keyErr.Want) == 0 {
-			return fmt.Errorf("host key for %s is not in %s: presented %s; add it with: %s", addr, opts.KnownHosts, presented, keyscanHint(opts))
+			return fmt.Errorf("host key for %s is not in %s: presented %s; add it with: %s: %w", addr, opts.KnownHosts, presented, keyscanHint(opts), keyErr)
 		}
 		accepted := make([]string, 0, len(keyErr.Want))
 		for _, want := range keyErr.Want {
 			accepted = append(accepted, ssh.FingerprintSHA256(want.Key))
 		}
-		return fmt.Errorf("host key for %s changed: presented %s, accepted %s", addr, presented, strings.Join(accepted, ", "))
+		return fmt.Errorf("host key for %s changed: presented %s, accepted %s: %w", addr, presented, strings.Join(accepted, ", "), keyErr)
 	}, nil
 }
 
