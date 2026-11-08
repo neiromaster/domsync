@@ -1,0 +1,12 @@
+# top
+
+[media]
++.bitru.org
++.nnmclub.to
+
+[misc]
++.example.org
++.servarr.com
+
+[other]
++.old-domain.com
