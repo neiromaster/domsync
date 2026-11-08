@@ -46,11 +46,16 @@ echo "Downloading domsync ${version} (${os}/${arch})..."
 curl -fsSL -o "${tmp}/${archive}.tar.gz" "${download_url}/${archive}.tar.gz"
 curl -fsSL -o "${tmp}/checksums.txt" "${download_url}/checksums.txt"
 
+sum_line=$(grep "  ${archive}.tar.gz\$" "$tmp/checksums.txt") || fail "checksum for ${archive}.tar.gz missing from checksums.txt"
+hash=${sum_line%%  *}
+case "$hash" in
+  "" | *[!0-9a-fA-F]*) fail "checksum line for ${archive}.tar.gz is malformed" ;;
+esac
+[ "${#hash}" -eq 64 ] || fail "checksum line for ${archive}.tar.gz is malformed"
+
 if command -v sha256sum >/dev/null 2>&1; then
-  sum_line=$(grep "  ${archive}.tar.gz\$" "$tmp/checksums.txt") || fail "checksum for ${archive}.tar.gz missing from checksums.txt"
   printf '%s\n' "$sum_line" | (cd "$tmp" && sha256sum -c -)
 elif command -v shasum >/dev/null 2>&1; then
-  sum_line=$(grep "  ${archive}.tar.gz\$" "$tmp/checksums.txt") || fail "checksum for ${archive}.tar.gz missing from checksums.txt"
   printf '%s\n' "$sum_line" | (cd "$tmp" && shasum -a 256 -c -)
 else
   fail "neither sha256sum nor shasum is available; refusing to install unverified artifacts"
