@@ -2,6 +2,7 @@
 set -eu
 
 export GH_TOKEN="$GITHUB_TOKEN"
+npm config set --location=user "//registry.npmjs.org/:_authToken" "${NPM_TOKEN:?NPM_TOKEN is not set}"
 TAG="${GITHUB_REF_NAME:?GITHUB_REF_NAME is not set}"
 VERSION="${TAG#v}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -21,6 +22,11 @@ for pair in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 wind
     os=win32
   fi
   platform="$os-$cpu"
+
+  if npm view "@neiromaster/domsync-$platform@$VERSION" version >/dev/null 2>&1; then
+    echo "skip $platform (already published)"
+    continue
+  fi
 
   ext=tar.gz
   bin=domsync
@@ -44,31 +50,34 @@ for pair in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 wind
   fi
   [ -f "$pkg_dir/$bin" ]
 
+  printf '{"name":"@neiromaster/domsync-%s","version":"%s"}\n' "$platform" "$VERSION" > "$pkg_dir/package.json"
+
   (
     cd "$pkg_dir"
     npm pkg set \
-      "name=@neiromaster/domsync-$platform" \
-      "version=$VERSION" \
       "os=$os" \
       "cpu=$cpu" \
       "files[0]=domsync" \
       "files[1]=domsync.exe" \
       "license=MIT" \
       "repository.type=git" \
-      "repository.url=https://github.com/neiromaster/domsync" \
-      "publishConfig.access=public" \
-      "publishConfig.provenance=true"
-    npm publish --access public
+      "repository.url=https://github.com/neiromaster/domsync"
+    npm pkg set --json "publishConfig.provenance=true" "publishConfig.access=\"public\""
+    npm publish --provenance --access public
   )
 done
 
 launcher_dir="$WORK/packages/domsync"
-cp -R "$ROOT/npm/domsync" "$launcher_dir"
-(
-  cd "$launcher_dir"
-  npm pkg set "version=$VERSION"
-  for platform in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-arm64 win32-x64; do
-    npm pkg set "optionalDependencies.@neiromaster/domsync-$platform=$VERSION"
-  done
-  npm publish --access public
-)
+if npm view "domsync@$VERSION" version >/dev/null 2>&1; then
+  echo "skip domsync (already published)"
+else
+  cp -R "$ROOT/npm/domsync" "$launcher_dir"
+  (
+    cd "$launcher_dir"
+    npm pkg set "version=$VERSION"
+    for platform in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-arm64 win32-x64; do
+      npm pkg set "optionalDependencies.@neiromaster/domsync-$platform=$VERSION"
+    done
+    npm publish --provenance --access public
+  )
+fi
