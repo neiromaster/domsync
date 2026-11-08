@@ -72,3 +72,66 @@ func TestParseLocalErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestParseLocalNegativeBeforeSection(t *testing.T) {
+	_, err := ParseLocal([]byte("-old.example\n[media]\n+.a.com\n"), "domains.txt")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var ve *ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error = %T %v, want *ValidationError", err, err)
+	}
+	if ve.File != "domains.txt" || ve.Line != 1 || ve.Text != "-old.example" {
+		t.Fatalf("located at %s:%d %q", ve.File, ve.Line, ve.Text)
+	}
+	if !strings.Contains(err.Error(), "outside a section") {
+		t.Fatalf("error = %v, want outside a section", err)
+	}
+}
+
+func TestParseLocalFlatNegativesOnly(t *testing.T) {
+	got, err := ParseLocal([]byte("-old.example\n-*.old.example.org\n"), "domains.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.HasSections {
+		t.Fatal("should be flat")
+	}
+	if len(got.Negatives) != 2 {
+		t.Fatalf("negatives = %+v", got.Negatives)
+	}
+	if got.Negatives[0].Pattern != "old.example" || got.Negatives[0].Section != "" || got.Negatives[0].Line != 1 {
+		t.Fatalf("negative 0 = %+v", got.Negatives[0])
+	}
+	if got.Negatives[1].Pattern != "*.old.example.org" || got.Negatives[1].Section != "" || got.Negatives[1].Line != 2 {
+		t.Fatalf("negative 1 = %+v", got.Negatives[1])
+	}
+}
+
+func TestParseLocalFlatCommentIsPreamble(t *testing.T) {
+	got, err := ParseLocal([]byte("# note\nexample.com\n"), "domains.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Preamble) != 1 || got.Preamble[0] != "# note" {
+		t.Fatalf("preamble = %q", got.Preamble)
+	}
+}
+
+func TestParseLocalReportsFirstRecordBeforeSection(t *testing.T) {
+	_, err := ParseLocal([]byte("-one.example\n-two.example\n[media]\n+.a.com\n"), "domains.txt")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var ve *ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error = %T %v, want *ValidationError", err, err)
+	}
+	if ve.File != "domains.txt" || ve.Line != 1 || ve.Text != "-one.example" {
+		t.Fatalf("located at %s:%d %q", ve.File, ve.Line, ve.Text)
+	}
+	if !strings.Contains(err.Error(), "outside a section") {
+		t.Fatalf("error = %v, want outside a section", err)
+	}
+}

@@ -48,17 +48,20 @@ type LocalFile struct {
 	Negatives   []Negative
 }
 
-var sectionHeader = regexp.MustCompile(`^\[([^\[\]\r\n]+)\]$`)
+var (
+	sectionHeader = regexp.MustCompile(`^\[([^\[\]\r\n]+)\]$`)
+	utf8BOM       = []byte("\xef\xbb\xbf")
+)
 
 const maxSectionNameRunes = 64
 
 func ParseLocal(data []byte, filename string) (*LocalFile, error) {
-	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
+	data = bytes.TrimPrefix(data, utf8BOM)
 	lines := strings.Split(string(data), "\n")
 	file := &LocalFile{}
 	seen := make(map[string]struct{})
-	firstFlatLine := 0
-	firstFlatText := ""
+	firstRecordLine := 0
+	firstRecordText := ""
 
 	invalid := func(line int, text string, err error) error {
 		return &ValidationError{File: filename, Line: line, Text: text, Err: err}
@@ -99,8 +102,8 @@ func ParseLocal(data []byte, filename string) (*LocalFile, error) {
 					return nil, invalid(lineNo, line, fmt.Errorf("section name %q contains control character %q", name, r))
 				}
 			}
-			if firstFlatLine != 0 {
-				return nil, invalid(firstFlatLine, firstFlatText, errors.New("entry outside a section: add a [section] header before this entry"))
+			if firstRecordLine != 0 {
+				return nil, invalid(firstRecordLine, firstRecordText, errors.New("entry outside a section: add a [section] header before this entry"))
 			}
 			seen[name] = struct{}{}
 			file.HasSections = true
@@ -114,6 +117,11 @@ func ParseLocal(data []byte, filename string) (*LocalFile, error) {
 
 		if line != trimmed {
 			return nil, invalid(lineNo, line, errors.New("entry has leading or trailing whitespace: start the pattern at the beginning of its line"))
+		}
+
+		if !file.HasSections && firstRecordLine == 0 {
+			firstRecordLine = lineNo
+			firstRecordText = line
 		}
 
 		if strings.HasPrefix(line, "-") {
@@ -137,10 +145,6 @@ func ParseLocal(data []byte, filename string) (*LocalFile, error) {
 			last := len(file.Sections) - 1
 			file.Sections[last].Entries = append(file.Sections[last].Entries, pattern)
 			continue
-		}
-		if firstFlatLine == 0 {
-			firstFlatLine = lineNo
-			firstFlatText = line
 		}
 		file.Flat = append(file.Flat, pattern)
 	}
