@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -32,11 +33,13 @@ type cacheEntry struct {
 	Tag  string `json:"tag"`
 }
 
+var defaultClient = &http.Client{Timeout: 2 * time.Second}
+
 func NewChecker() *Checker {
 	c := &Checker{
 		BaseURL: "https://api.github.com",
 		Repo:    "neiromaster/domsync",
-		Client:  &http.Client{Timeout: 2 * time.Second},
+		Client:  defaultClient,
 	}
 	if dir, err := os.UserCacheDir(); err == nil {
 		c.CachePath = filepath.Join(dir, "domsync", "update.json")
@@ -77,6 +80,7 @@ func (c *Checker) LatestTag(ctx context.Context) (string, error) {
 	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case http.StatusNotModified:
+		_, _ = io.Copy(io.Discard, resp.Body)
 		if cache.Tag == "" {
 			return "", fmt.Errorf("update: GET %s: 304 without a cached tag", url)
 		}
@@ -88,9 +92,13 @@ func (c *Checker) LatestTag(ctx context.Context) (string, error) {
 		if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
 			return "", err
 		}
+		if release.TagName == "" {
+			return "", fmt.Errorf("update: GET %s: empty release tag", url)
+		}
 		c.saveCache(cacheEntry{ETag: resp.Header.Get("ETag"), Tag: release.TagName})
 		return release.TagName, nil
 	default:
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return "", fmt.Errorf("update: GET %s: unexpected status %s", url, resp.Status)
 	}
 }
@@ -99,7 +107,7 @@ func (c *Checker) httpClient() *http.Client {
 	if c.Client != nil {
 		return c.Client
 	}
-	return &http.Client{Timeout: 2 * time.Second}
+	return defaultClient
 }
 
 func (c *Checker) releasesURL() string {
