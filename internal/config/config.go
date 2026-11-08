@@ -251,18 +251,22 @@ func (c *Config) validate() error {
 		return fmt.Errorf("target.post_write.timeout must be positive, got %s", time.Duration(c.Target.PostWrite.Timeout))
 	}
 	if c.Target.SSHKey != "" {
-		info, err := os.Stat(c.Target.SSHKey)
-		if err != nil {
-			return fmt.Errorf("target.ssh_key %q: %w", c.Target.SSHKey, err)
-		}
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("target.ssh_key %q is not a regular file", c.Target.SSHKey)
-		}
-		if _, err := os.Stat(c.Target.KnownHosts); err != nil {
-			return fmt.Errorf("target.known_hosts %q: %w", c.Target.KnownHosts, err)
+		if err := requireRegularFile("target.ssh_key", c.Target.SSHKey); err != nil {
+			return err
 		}
 	} else if os.Getenv("SSH_AUTH_SOCK") == "" {
 		return errors.New("target.ssh_key is empty and SSH_AUTH_SOCK is not set")
+	}
+	return requireRegularFile("target.known_hosts", c.Target.KnownHosts)
+}
+
+func requireRegularFile(key, name string) error {
+	info, err := os.Stat(name)
+	if err != nil {
+		return fmt.Errorf("%s %q: %w", key, name, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%s %q is not a regular file", key, name)
 	}
 	return nil
 }

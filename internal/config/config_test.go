@@ -100,6 +100,61 @@ func TestLoadDuration(t *testing.T) {
 	}
 }
 
+func TestLoadDurationErrorNamesLineAndValue(t *testing.T) {
+	dir := t.TempDir()
+	configPath, _, _ := writeMinimal(t, dir)
+	body, _ := os.ReadFile(configPath)
+	body = []byte(strings.Replace(string(body), "\n  path:", "\n  post_write:\n    timeout: abc\n  path:", 1))
+	if err := os.WriteFile(configPath, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(configPath)
+	if err == nil {
+		t.Fatal("expected a duration error")
+	}
+	message := err.Error()
+	if !strings.Contains(message, "line 8") {
+		t.Fatalf("error does not name the line: %v", err)
+	}
+	if !strings.Contains(message, `"abc"`) {
+		t.Fatalf("error does not name the value: %v", err)
+	}
+}
+
+func TestLoadAgentModeRequiresKnownHosts(t *testing.T) {
+	dir := t.TempDir()
+	home := filepath.Join(dir, "home")
+	if err := os.Mkdir(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("SSH_AUTH_SOCK", "/tmp/agent.sock")
+	path := filepath.Join(dir, "domsync.yaml")
+	body := "version: 1\ntarget:\n  host: h\n  user: root\n  path: /x\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil || !strings.Contains(err.Error(), "known_hosts") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestLoadRejectsKnownHostsDirectory(t *testing.T) {
+	dir := t.TempDir()
+	configPath, _, khPath := writeMinimal(t, dir)
+	if err := os.Remove(khPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(khPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(configPath)
+	if err == nil || !strings.Contains(err.Error(), "known_hosts") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestDiscoverOrder(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "custom.yaml")
