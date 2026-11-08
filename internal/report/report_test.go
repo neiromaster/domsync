@@ -10,8 +10,8 @@ import (
 func TestJSONShape(t *testing.T) {
 	r := &Report{
 		OK: true, Changed: true, Total: 2, Sections: 1,
-		Router:   &FileDelta{Path: "/r", Changed: true, Added: []string{"+.a.com"}, Removed: []string{}},
-		Local:    &FileDelta{Path: "./l", Changed: true, Added: []string{"+.a.com"}, Removed: []string{}},
+		Router:   &FileDelta{Path: "/r", Changed: true, Written: true, Added: []string{"+.a.com"}, Removed: []string{}},
+		Local:    &FileDelta{Path: "./l", Changed: true, Written: true, Added: []string{"+.a.com"}, Removed: []string{}},
 		Warnings: []string{}, Commands: []Command{},
 	}
 	var buf bytes.Buffer
@@ -26,6 +26,10 @@ func TestJSONShape(t *testing.T) {
 		if _, ok := got[key]; !ok {
 			t.Errorf("missing key %q in %s", key, buf.String())
 		}
+	}
+	router, ok := got["router"].(map[string]any)
+	if !ok || router["written"] != true {
+		t.Errorf("router written = %v in %s", got["router"], buf.String())
 	}
 }
 
@@ -117,12 +121,12 @@ func TestHumanChanged(t *testing.T) {
 	var buf bytes.Buffer
 	Human(&buf, &Report{
 		OK: true, Changed: true, Total: 2, Sections: 1,
-		Router: &FileDelta{Path: "/r", Changed: true, Added: []string{"+.a.com"}, Removed: []string{"+.b.com"}, Backup: "/r.domsync.bak"},
-		Local:  &FileDelta{Path: "./l", Changed: true, Added: []string{"+.a.com"}, Removed: []string{"+.b.com"}, Moved: []Move{{Pattern: "+.c.com", From: "media", To: "misc"}}},
+		Router: &FileDelta{Path: "/r", Changed: true, Written: true, Added: []string{"+.a.com"}, Removed: []string{"+.b.com"}, Backup: "/r.domsync.bak"},
+		Local:  &FileDelta{Path: "./l", Changed: true, Written: true, Added: []string{"+.a.com"}, Removed: []string{"+.b.com"}, Moved: []Move{{Pattern: "+.c.com", From: "media", To: "misc"}}},
 	})
 	want := "domsync: 2 домена, 1 секция\n" +
 		"  роутер: +1 −1, записан, бэкап /r.domsync.bak\n" +
-		"  локально: +1 −1, перемещён 1\n"
+		"  локально: +1 −1, записан, перемещён 1\n"
 	if buf.String() != want {
 		t.Fatalf("output = %q, want %q", buf.String(), want)
 	}
@@ -162,7 +166,7 @@ func TestHumanRouterIgnoresMoved(t *testing.T) {
 	var buf bytes.Buffer
 	Human(&buf, &Report{
 		OK: true, Changed: true, Total: 1, Sections: 1,
-		Router: &FileDelta{Path: "/r", Changed: true, Added: []string{}, Removed: []string{}, Moved: []Move{{Pattern: "+.a.com", From: "media", To: "misc"}}},
+		Router: &FileDelta{Path: "/r", Changed: true, Written: true, Added: []string{}, Removed: []string{}, Moved: []Move{{Pattern: "+.a.com", From: "media", To: "misc"}}},
 	})
 	want := "domsync: 1 домен, 1 секция\n  роутер: +0 −0, записан\n"
 	if buf.String() != want {
@@ -245,7 +249,7 @@ func TestHumanPartialError(t *testing.T) {
 	var buf bytes.Buffer
 	Human(&buf, &Report{
 		OK: false, Changed: true, Total: 1, Sections: 1,
-		Router:   &FileDelta{Path: "/r", Changed: true, Added: []string{"+.a.com"}, Removed: []string{}},
+		Router:   &FileDelta{Path: "/r", Changed: true, Written: true, Added: []string{"+.a.com"}, Removed: []string{}},
 		Commands: []Command{{Command: "/etc/init.d/openclash restart", ExitCode: 1, DurationMS: 20}},
 		Warnings: []string{},
 		Error:    &ErrorInfo{Code: 5, Message: "command failed"},

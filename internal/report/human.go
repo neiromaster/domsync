@@ -44,7 +44,7 @@ func writeFileDelta(w io.Writer, label string, delta *FileDelta, local, dryRun b
 	}
 	skipped := dryRun || delta.Skipped
 	fmt.Fprintf(w, "  %s: +%d −%d", label, len(delta.Added), len(delta.Removed))
-	if !local && !skipped {
+	if delta.Written {
 		fmt.Fprint(w, ", записан")
 	}
 	if local && len(delta.Moved) > 0 {

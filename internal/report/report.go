@@ -17,6 +17,7 @@ type Report struct {
 type FileDelta struct {
 	Path    string   `json:"path"`
 	Changed bool     `json:"changed"`
+	Written bool     `json:"written,omitempty"`
 	Skipped bool     `json:"skipped,omitempty"`
 	Added   []string `json:"added"`
 	Removed []string `json:"removed"`

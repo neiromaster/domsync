@@ -127,12 +127,14 @@ func Sync(ctx context.Context, opts SyncOptions, dial func(context.Context, conf
 			return rep, withCode(3, err)
 		}
 		rep.Router.Backup = result.BackupPath
+		rep.Router.Written = true
 	}
 	if localChanged {
 		if err := writeLocalAtomic(cfg.Source.Domains, renderedLocal); err != nil {
 			rep.OK = false
 			return rep, withCode(1, err)
 		}
+		rep.Local.Written = true
 	}
 
 	if err := runPostWrite(ctx, runner, cfg, rep, routerChanged); err != nil {

@@ -20,6 +20,7 @@ type fakeRunner struct {
 	files    map[string][]byte
 	writes   []string
 	commands []string
+	writeErr error
 	cmdErr   error
 }
 
@@ -30,6 +31,9 @@ func (f *fakeRunner) ReadFile(_ context.Context, p string) ([]byte, error) {
 	return nil, sshclient.ErrNotExist
 }
 func (f *fakeRunner) WriteFileAtomic(_ context.Context, p string, data []byte, _ sshclient.WriteOptions) (sshclient.WriteResult, error) {
+	if f.writeErr != nil {
+		return sshclient.WriteResult{}, f.writeErr
+	}
 	f.files[p] = data
 	f.writes = append(f.writes, p)
 	return sshclient.WriteResult{}, nil
@@ -164,5 +168,65 @@ func TestSyncTransportCommandFailureReported(t *testing.T) {
 	}
 	if len(doc.Commands) != 1 || doc.Commands[0].Error != "connection lost" {
 		t.Fatalf("commands = %+v in %s", doc.Commands, jsonBuf.String())
+	}
+}
+
+func TestSyncWriteFailureDoesNotClaimWrite(t *testing.T) {
+	cfgPath, f := setup(t, "[media]\n+.new.com\n", "")
+	f.writeErr = errors.New("connection lost")
+	rep, err := Sync(context.Background(), SyncOptions{ConfigPath: cfgPath}, func(context.Context, config.Config) (Runner, error) { return f, nil })
+	if err == nil || ExitCode(err) != 3 || rep == nil || !strings.Contains(err.Error(), "connection lost") {
+		t.Fatalf("error = %v (code %d), report=%+v", err, ExitCode(err), rep)
+	}
+	var human bytes.Buffer
+	report.Human(&human, rep)
+	if strings.Contains(human.String(), ", записан") {
+		t.Fatalf("human claims a write: %q", human.String())
+	}
+	if !strings.Contains(human.String(), "роутер: +1 −0") {
+		t.Fatalf("human = %q", human.String())
+	}
+}
+
+func TestSyncSuccessRendersWritten(t *testing.T) {
+	cfgPath, f := setup(t, "[media]\n+.new.com\n", "")
+	rep, err := Sync(context.Background(), SyncOptions{ConfigPath: cfgPath}, func(context.Context, config.Config) (Runner, error) { return f, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	var human bytes.Buffer
+	report.Human(&human, rep)
+	if !strings.Contains(human.String(), "роутер: +1 −0, записан") {
+		t.Fatalf("human = %q", human.String())
+	}
+}
+
+func TestSyncCommandFailureStillRendersWritten(t *testing.T) {
+	cfgPath, f := setup(t, "[media]\n+.a.com\n", "")
+	f.cmdErr = errors.New("exit 1")
+	rep, err := Sync(context.Background(), SyncOptions{ConfigPath: cfgPath}, func(context.Context, config.Config) (Runner, error) { return f, nil })
+	if err == nil || ExitCode(err) != 5 || rep == nil {
+		t.Fatalf("error = %v (code %d), report=%+v", err, ExitCode(err), rep)
+	}
+	var human bytes.Buffer
+	report.Human(&human, rep)
+	if !strings.Contains(human.String(), "роутер: +1 −0, записан") {
+		t.Fatalf("human = %q", human.String())
+	}
+}
+
+func TestSyncLocalOnlyRewriteClaimsLocalWrite(t *testing.T) {
+	cfgPath, f := setup(t, "[media]\n+.b.com\n+.a.com\n", "# [media]\n+.a.com\n+.b.com\n")
+	rep, err := Sync(context.Background(), SyncOptions{ConfigPath: cfgPath}, func(context.Context, config.Config) (Runner, error) { return f, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Router.Changed || rep.Router.Written || !rep.Local.Changed || !rep.Local.Written {
+		t.Fatalf("report = %+v", rep)
+	}
+	var human bytes.Buffer
+	report.Human(&human, rep)
+	if !strings.Contains(human.String(), "локально: +0 −0, записан") {
+		t.Fatalf("human = %q", human.String())
 	}
 }
