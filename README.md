@@ -25,7 +25,7 @@ npm i -g domsync
 Install script (macOS and Linux):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/neiromaster/domsync/main/install.sh | sh
+curl -fsSL https://github.com/neiromaster/domsync/releases/latest/download/install.sh | sh
 ```
 
 The script downloads the release archive and `checksums.txt`, verifies the SHA-256 checksum, and installs to `$DOMSYNC_INSTALL_DIR` (default `$HOME/.local/bin`). Set `DOMSYNC_VERSION` (for example `1.2.3` or `v1.2.3`) to pin a release instead of the latest one. It never uses `sudo`; if the destination is not writable it prints instructions instead. If `cosign` is installed it also verifies the Sigstore bundle, otherwise it prints the manual verification commands.
@@ -169,7 +169,7 @@ YAML parsing is strict: unknown fields, multiple YAML documents and an empty fil
 | `target.post_write.timeout` | duration string | `120s` | Timeout for each command. See the note below. |
 | `target.post_write.commands` | list of strings | empty | Commands run sequentially over the existing SSH connection. |
 | `update.check` | boolean | `true` | Check GitHub for a newer release at launch. `--no-update-check` overrides it. |
-| `logging.file` | path | empty (disabled) | When set, one summary line is appended per run. |
+| `logging.file` | path | empty (disabled) | When set, one summary line is appended on a completed run (and when a post-write command fails). |
 
 `target.post_write.run` values:
 
@@ -233,12 +233,12 @@ The default human report is Russian and looks like this for a run that changed b
 ```text
 domsync: 14 доменов, 3 секции
   роутер: +1 −1, записан, бэкап /etc/openclash/rule_provider/domsync.txt.domsync.bak
-  локально: +1 −1, перемещён 1
+  локально: +1 −1, записан, перемещён 1
   команда: /etc/init.d/openclash restart — ok, 2.1s
 ```
 
 - The header reports the total number of domains and non-empty sections.
-- `роутер` and `локально` show added and removed counts with the U+2212 minus sign. The router line adds `записан` when the file was written and the backup path when a backup was made; the local line adds `перемещён N` for moved patterns.
+- `роутер` and `локально` show added and removed counts with the U+2212 minus sign. A file line adds `записан` only when that file was actually written; the router line also shows the backup path when a backup was made, and the local line adds `перемещён N` for moved patterns.
 - `без изменений` means that file was already identical.
 - With `--dry-run`, each changed file is marked `будет записан (dry-run)`.
 - Command results are `ok, <duration>` or `ошибка <exit code>`; a transport failure prints `ошибка: <message>`.
@@ -246,12 +246,12 @@ domsync: 14 доменов, 3 секции
 
 `--dry-run` still connects to the router and reads the current provider file; it skips both writes and all commands. It is not an offline mode.
 
-- `--json` writes a single JSON object to stdout (errors are JSON as well), with English field names: `ok`, `changed`, `dry_run`, `total`, `sections`, `router`, `local`, `warnings`, `commands`, `update`, `error`.
+- `--json` writes a single JSON object to stdout; errors after argument parsing are JSON as well. The English field names are `ok`, `changed`, `dry_run`, `total`, `sections`, `router`, `local`, `warnings`, `commands`, `update`, `error`.
 - `--quiet` prints only errors; `--verbose` adds update-check failures to the warnings; `--strict` treats local warnings as errors.
 
 ## Security
 
-- **Strict host key checking.** Every connection verifies the router key against `known_hosts` using `golang.org/x/crypto/ssh/knownhosts`, whether authentication uses a key file or the ssh-agent. Unknown or changed keys abort the run with the SHA-256 fingerprint and a `ssh-keyscan` hint. TOFU does not exist in v1.
+- **Strict host key checking.** Every connection verifies the router key against `known_hosts` using `golang.org/x/crypto/ssh/knownhosts`, whether authentication uses a key file or the ssh-agent. An unknown key aborts with its SHA-256 fingerprint and a `ssh-keyscan` hint; a changed key aborts naming both the presented and the expected fingerprints. TOFU does not exist in v1.
 - **Updates in v1 rely on SHA-256 only.** The binary checks the downloaded archive against `checksums.txt` from the release and extracts only the expected executable, rejecting path traversal. GoReleaser also publishes a cosign keyless signature bundle (`checksums.txt.sigstore.json`) and GitHub build attestations; these are for manual verification, not checked by the CLI. To verify a release by hand:
 
   ```sh

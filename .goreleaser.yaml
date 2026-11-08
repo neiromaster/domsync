@@ -26,6 +26,9 @@ archives:
     files: [LICENSE, README.md]
 checksum:
   name_template: checksums.txt
+release:
+  extra_files:
+    - glob: ./install.sh
 sboms:
   - artifacts: archive
 signs:
