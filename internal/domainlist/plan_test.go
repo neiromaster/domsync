@@ -85,6 +85,57 @@ func TestBuildPlanDeleteRemoteOnly(t *testing.T) {
 	}
 }
 
+func TestBuildPlanDeleteRemovesFromRouterAndSnapshot(t *testing.T) {
+	plan, err := BuildPlan(Input{
+		Local:        local(t, "[media]\n+.keep.com\n-+.old.com\n"),
+		Remote:       []string{"+.old.com", "+.keep.com"},
+		OtherSection: "other",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(plan.RouterRemoved, []string{"+.old.com"}) {
+		t.Fatalf("router removed = %v", plan.RouterRemoved)
+	}
+	if !reflect.DeepEqual(plan.LocalRemoved, []string{"+.old.com"}) {
+		t.Fatalf("local removed = %v", plan.LocalRemoved)
+	}
+}
+
+func TestBuildPlanMoveIsNotALocalRemoval(t *testing.T) {
+	plan, err := BuildPlan(Input{
+		Local:        local(t, "[media]\n-+.x.com\n[misc]\n+.x.com\n"),
+		Remote:       []string{"+.x.com"},
+		OtherSection: "other",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.LocalRemoved) != 0 {
+		t.Fatalf("local removed = %v, want none", plan.LocalRemoved)
+	}
+	if len(plan.LocalMoved) != 1 || plan.LocalMoved[0].Pattern != "+.x.com" {
+		t.Fatalf("moved = %+v, want one move of +.x.com", plan.LocalMoved)
+	}
+}
+
+func TestBuildPlanMissingDeleteTargetIsNotALocalRemoval(t *testing.T) {
+	plan, err := BuildPlan(Input{
+		Local:        local(t, "[media]\n+.keep.com\n-+.nowhere.com\n"),
+		Remote:       []string{"+.keep.com"},
+		OtherSection: "other",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.LocalRemoved) != 0 {
+		t.Fatalf("local removed = %v, want none", plan.LocalRemoved)
+	}
+	if len(plan.Warnings) != 1 || !strings.Contains(plan.Warnings[0], "not found") {
+		t.Fatalf("warnings = %v", plan.Warnings)
+	}
+}
+
 func TestBuildPlanSameSectionNegativeWarns(t *testing.T) {
 	plan, err := BuildPlan(Input{
 		Local:        local(t, "[media]\n+.a.com\n-+.a.com\n"),

@@ -88,7 +88,7 @@ func BuildPlan(in Input) (*Plan, error) {
 	plan.RouterAdded = subtract(finalSet, remoteSet)
 	plan.RouterRemoved = subtract(remoteSet, finalSet)
 	plan.LocalAdded = subtract(finalSet, positiveSet)
-	plan.LocalRemoved = subtract(positiveSet, finalSet)
+	plan.LocalRemoved = localRemovals(negatives, remoteSet, finalSet)
 	plan.LocalMoved = movedPatterns(positives, negatives, remoteSet)
 
 	return plan, nil
@@ -141,6 +141,16 @@ func mergeSections(localFile *LocalFile, otherSection string, final map[string]s
 		}
 	}
 	return append(sections, merged)
+}
+
+func localRemovals(negatives map[string]Negative, remoteSet, finalSet map[string]struct{}) []string {
+	onRouter := make(map[string]struct{}, len(negatives))
+	for pattern := range negatives {
+		if _, ok := remoteSet[pattern]; ok {
+			onRouter[pattern] = struct{}{}
+		}
+	}
+	return subtract(onRouter, finalSet)
 }
 
 func movedPatterns(positives map[string]string, negatives map[string]Negative, remoteSet map[string]struct{}) []Move {

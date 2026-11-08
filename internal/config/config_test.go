@@ -83,6 +83,58 @@ func TestLoadRejectsBadValues(t *testing.T) {
 	}
 }
 
+func TestLoadOtherSectionValidation(t *testing.T) {
+	cases := []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{"closing bracket", `"oth]er"`, true},
+		{"opening bracket", `"a[b"`, true},
+		{"newline", `"a\nb"`, true},
+		{"too long", strings.Repeat("a", 65), true},
+		{"valid", "misc", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			configPath, _, _ := writeMinimal(t, dir)
+			body, err := os.ReadFile(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body = append(body, []byte("  other_section: "+tc.value+"\n")...)
+			if err := os.WriteFile(configPath, body, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err = Load(configPath)
+			if tc.wantErr && (err == nil || !strings.Contains(err.Error(), "target.other_section")) {
+				t.Fatalf("error = %v, want a target.other_section error", err)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("error = %v, want none", err)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsZeroMode(t *testing.T) {
+	dir := t.TempDir()
+	configPath, _, _ := writeMinimal(t, dir)
+	body, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = append(body, []byte("  mode: \"0000\"\n")...)
+	if err := os.WriteFile(configPath, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Load(configPath)
+	if err == nil || !strings.Contains(err.Error(), "target.mode") {
+		t.Fatalf("error = %v, want a target.mode error", err)
+	}
+}
+
 func TestLoadDuration(t *testing.T) {
 	dir := t.TempDir()
 	configPath, _, _ := writeMinimal(t, dir)

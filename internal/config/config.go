@@ -12,11 +12,16 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"go.yaml.in/yaml/v3"
 )
 
-const maxConfigSize = 1 << 20
+const (
+	maxConfigSize        = 1 << 20
+	maxOtherSectionRunes = 64
+)
 
 type Config struct {
 	Version int     `yaml:"version"`
@@ -238,9 +243,20 @@ func (c *Config) validate() error {
 	if c.Target.OtherSection == "" {
 		return errors.New("target.other_section must not be empty")
 	}
+	if strings.ContainsAny(c.Target.OtherSection, "[]") {
+		return fmt.Errorf("target.other_section must not contain '[' or ']', got %q", c.Target.OtherSection)
+	}
+	if utf8.RuneCountInString(c.Target.OtherSection) > maxOtherSectionRunes {
+		return fmt.Errorf("target.other_section must be at most %d runes, got %d", maxOtherSectionRunes, utf8.RuneCountInString(c.Target.OtherSection))
+	}
+	for _, r := range c.Target.OtherSection {
+		if unicode.IsControl(r) {
+			return fmt.Errorf("target.other_section must not contain control characters, got %q", c.Target.OtherSection)
+		}
+	}
 	mode, err := strconv.ParseUint(c.Target.Mode, 8, 32)
-	if err != nil || mode > 0o777 {
-		return fmt.Errorf("target.mode must be octal and no greater than 0777, got %q", c.Target.Mode)
+	if err != nil || mode == 0 || mode > 0o777 {
+		return fmt.Errorf("target.mode must be octal between 0001 and 0777, got %q", c.Target.Mode)
 	}
 	switch c.Target.PostWrite.Run {
 	case "on_change", "always", "never":
