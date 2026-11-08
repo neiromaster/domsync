@@ -194,6 +194,7 @@ func runCommand(channel ssh.Channel, command string, requests <-chan *ssh.Reques
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	cmd.Stdin = channel
 	cmd.Stdout = channel
 	cmd.Stderr = channel.Stderr()
 	if err := cmd.Start(); err != nil {
@@ -214,6 +215,7 @@ func runCommand(channel ssh.Channel, command string, requests <-chan *ssh.Reques
 			}
 			if request.Type == "signal" {
 				cancel()
+				channel.Close()
 				return exitCode(<-done)
 			}
 			request.Reply(false, nil)

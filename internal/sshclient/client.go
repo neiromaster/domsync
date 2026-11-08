@@ -59,7 +59,8 @@ func Dial(ctx context.Context, opts Options) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	hostKey, err := knownhosts.New(opts.KnownHosts)
+	addr := net.JoinHostPort(opts.Host, strconv.Itoa(opts.Port))
+	hostKey, err := hostKeyCallback(opts)
 	if err != nil {
 		closeConn(agentConn)
 		return nil, fmt.Errorf("known hosts %s: %w", opts.KnownHosts, err)
@@ -72,9 +73,7 @@ func Dial(ctx context.Context, opts Options) (*Client, error) {
 		User:            opts.User,
 		Auth:            auth,
 		HostKeyCallback: hostKey,
-		Timeout:         timeout,
 	}
-	addr := net.JoinHostPort(opts.Host, strconv.Itoa(opts.Port))
 	conn, err := (&net.Dialer{Timeout: timeout}).DialContext(ctx, "tcp", addr)
 	if err != nil {
 		closeConn(agentConn)
@@ -115,16 +114,58 @@ func authMethods(opts Options) ([]ssh.AuthMethod, net.Conn, error) {
 		methods = append(methods, ssh.PublicKeys(key))
 	}
 	var agentConn net.Conn
+	var agentErr error
 	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
-		if conn, err := net.Dial("unix", sock); err == nil {
+		conn, err := net.Dial("unix", sock)
+		if err != nil {
+			agentErr = err
+		} else {
 			agentConn = conn
 			methods = append(methods, ssh.PublicKeysCallback(agent.NewClient(conn).Signers))
 		}
 	}
 	if len(methods) == 0 {
+		if agentErr != nil {
+			return nil, agentConn, fmt.Errorf("no ssh authentication method configured: ssh agent: %w", agentErr)
+		}
 		return nil, agentConn, errors.New("no ssh authentication method configured")
 	}
 	return methods, agentConn, nil
+}
+
+func hostKeyCallback(opts Options) (ssh.HostKeyCallback, error) {
+	check, err := knownhosts.New(opts.KnownHosts)
+	if err != nil {
+		return nil, err
+	}
+	addr := net.JoinHostPort(opts.Host, strconv.Itoa(opts.Port))
+	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		err := check(hostname, remote, key)
+		if err == nil {
+			return nil
+		}
+		var keyErr *knownhosts.KeyError
+		if !errors.As(err, &keyErr) {
+			return err
+		}
+		presented := ssh.FingerprintSHA256(key)
+		if len(keyErr.Want) == 0 {
+			return fmt.Errorf("host key for %s is not in %s: presented %s; add it with: %s", addr, opts.KnownHosts, presented, keyscanHint(opts))
+		}
+		accepted := make([]string, 0, len(keyErr.Want))
+		for _, want := range keyErr.Want {
+			accepted = append(accepted, ssh.FingerprintSHA256(want.Key))
+		}
+		return fmt.Errorf("host key for %s changed: presented %s, accepted %s", addr, presented, strings.Join(accepted, ", "))
+	}, nil
+}
+
+func keyscanHint(opts Options) string {
+	hint := "ssh-keyscan -H"
+	if opts.Port != 22 {
+		hint += " -p " + strconv.Itoa(opts.Port)
+	}
+	return hint + " " + shellQuote(opts.Host) + " >> " + shellQuote(opts.KnownHosts)
 }
 
 func loadKey(opts Options) (ssh.Signer, error) {
