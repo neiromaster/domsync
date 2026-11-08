@@ -1,0 +1,27 @@
+version: 1
+
+source:
+  domains: ./domains.txt
+
+target:
+  host: 192.168.0.1
+  port: 22
+  user: root
+  ssh_key: ~/.ssh/id_ed25519
+  known_hosts: ~/.ssh/known_hosts
+  path: /etc/openclash/rule_provider/domsync.txt
+  other_section: other
+  mode: "0644"
+  backup: true
+  backup_suffix: .domsync.bak
+  post_write:
+    run: on_change
+    timeout: 120s
+    commands:
+      - /etc/init.d/openclash restart
+
+update:
+  check: true
+
+logging:
+  file: ""
