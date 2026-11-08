@@ -24,7 +24,7 @@ func Human(w io.Writer, r *Report) {
 	}
 	for _, command := range r.Commands {
 		if command.ExitCode == 0 {
-			fmt.Fprintf(w, "  команда: %s — ok, %s\n", command.Command, roundedDuration(command.DurationMS))
+			fmt.Fprintf(w, "  команда: %s — ok, %s\n", command.Command, commandDuration(command.DurationMS))
 		} else {
 			fmt.Fprintf(w, "  команда: %s — ошибка %d\n", command.Command, command.ExitCode)
 		}
@@ -74,6 +74,6 @@ func plural(n int, one, few, many string) string {
 	}
 }
 
-func roundedDuration(ms int64) time.Duration {
-	return (time.Duration(ms) * time.Millisecond).Round(100 * time.Millisecond)
+func commandDuration(ms int64) time.Duration {
+	return time.Duration(ms) * time.Millisecond
 }

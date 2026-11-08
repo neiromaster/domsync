@@ -189,6 +189,28 @@ func TestHumanCommandAndWarning(t *testing.T) {
 	}
 }
 
+func TestHumanCommandDurations(t *testing.T) {
+	cases := []struct {
+		ms   int64
+		want string
+	}{
+		{2100, "  команда: restart — ok, 2.1s\n"},
+		{20, "  команда: restart — ok, 20ms\n"},
+		{999, "  команда: restart — ok, 999ms\n"},
+		{0, "  команда: restart — ok, 0s\n"},
+	}
+	for _, tc := range cases {
+		var buf bytes.Buffer
+		Human(&buf, &Report{
+			OK: true, Changed: true, Total: 1, Sections: 1,
+			Commands: []Command{{Command: "restart", ExitCode: 0, DurationMS: tc.ms}},
+		})
+		if !strings.Contains(buf.String(), tc.want) {
+			t.Errorf("duration %dms output = %q, want substring %q", tc.ms, buf.String(), tc.want)
+		}
+	}
+}
+
 func TestHumanNotOKNoHeader(t *testing.T) {
 	var buf bytes.Buffer
 	Human(&buf, &Report{OK: false, Total: 1, Sections: 1})
