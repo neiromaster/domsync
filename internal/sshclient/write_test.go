@@ -109,12 +109,12 @@ func TestWriteFileAtomicFailureKeepsOriginal(t *testing.T) {
 func TestWriteFileAtomicFollowsSymlink(t *testing.T) {
 	c := dial(t)
 	dir := t.TempDir()
-	real := filepath.Join(dir, "real.txt")
+	target := filepath.Join(dir, "real.txt")
 	link := filepath.Join(dir, "link.txt")
-	if err := os.WriteFile(real, []byte("old\n"), 0o644); err != nil {
+	if err := os.WriteFile(target, []byte("old\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(real, link); err != nil {
+	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
 	res, err := c.WriteFileAtomic(context.Background(), link, []byte("new\n"), WriteOptions{Mode: 0o644, Backup: true, BackupSuffix: ".bak"})
@@ -128,7 +128,7 @@ func TestWriteFileAtomicFollowsSymlink(t *testing.T) {
 	if fi.Mode()&os.ModeSymlink == 0 {
 		t.Fatal("symlink was replaced")
 	}
-	if got, _ := os.ReadFile(real); string(got) != "new\n" {
+	if got, _ := os.ReadFile(target); string(got) != "new\n" {
 		t.Fatalf("target content = %q", got)
 	}
 	if res.BackupPath != link+".bak" {

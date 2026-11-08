@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -99,7 +100,7 @@ func fetchRelease(ctx context.Context, client *http.Client, url, current string)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil, fmt.Errorf("update: GET %s: unexpected status %s", url, resp.Status)
@@ -136,7 +137,7 @@ func download(ctx context.Context, client *http.Client, url, current string, lim
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil, fmt.Errorf("update: GET %s: unexpected status %s", url, resp.Status)
@@ -174,11 +175,11 @@ func extractTarGz(archive []byte, binaryName string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("update: read archive: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 	tr := tar.NewReader(gz)
 	for {
 		hdr, err := tr.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {

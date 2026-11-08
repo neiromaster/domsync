@@ -77,7 +77,7 @@ func (c *Checker) LatestTag(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	switch resp.StatusCode {
 	case http.StatusNotModified:
 		_, _ = io.Copy(io.Discard, resp.Body)
@@ -146,7 +146,7 @@ func (c *Checker) saveCache(entry cacheEntry) {
 		return
 	}
 	name := tmp.Name()
-	defer os.Remove(name)
+	defer func() { _ = os.Remove(name) }()
 	if err := tmp.Chmod(0o600); err != nil {
 		_ = tmp.Close()
 		return

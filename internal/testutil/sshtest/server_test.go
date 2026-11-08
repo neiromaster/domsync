@@ -15,13 +15,13 @@ import (
 func TestExecForwardsStdin(t *testing.T) {
 	env := Start(t)
 	client := dial(t, env)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	session, err := client.NewSession()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 	var stdout bytes.Buffer
 	session.Stdin = strings.NewReader("forwarded\n")
 	session.Stdout = &stdout
@@ -36,14 +36,14 @@ func TestExecForwardsStdin(t *testing.T) {
 func TestExecStdinWritesFile(t *testing.T) {
 	env := Start(t)
 	client := dial(t, env)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	path := filepath.Join(t.TempDir(), "written.txt")
 	session, err := client.NewSession()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 	session.Stdin = strings.NewReader("+.example.com\n")
 	if err := session.Run("cat > " + path); err != nil {
 		t.Fatal(err)

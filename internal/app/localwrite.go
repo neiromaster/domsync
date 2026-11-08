@@ -21,8 +21,8 @@ func writeLocalAtomic(path string, data []byte) (err error) {
 	}
 	defer func() {
 		if err != nil {
-			tmp.Close()
-			os.Remove(tmp.Name())
+			_ = tmp.Close()
+			_ = os.Remove(tmp.Name())
 		}
 	}()
 	if _, err = tmp.Write(data); err != nil {

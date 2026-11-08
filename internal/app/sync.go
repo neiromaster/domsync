@@ -57,7 +57,7 @@ func Sync(ctx context.Context, opts SyncOptions, dial func(context.Context, conf
 	if err != nil {
 		return nil, withCode(3, err)
 	}
-	defer runner.Close()
+	defer func() { _ = runner.Close() }()
 
 	remoteBytes, err := runner.ReadFile(ctx, cfg.Target.Path)
 	if err != nil {
@@ -173,11 +173,11 @@ func checkForUpdate(ctx context.Context, opts SyncOptions, cfg *config.Config, r
 }
 
 func readLocal(path string) ([]byte, error) {
-	file, err := os.Open(path)
+	file, err := os.Open(path) //nolint:gosec // path is the user-configured domain list location
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	data, err := io.ReadAll(io.LimitReader(file, maxLocalSize+1))
 	if err != nil {
 		return nil, err
@@ -233,11 +233,11 @@ func appendLog(cfg *config.Config, rep *report.Report) error {
 	if cfg.Logging.File == "" {
 		return nil
 	}
-	file, err := os.OpenFile(cfg.Logging.File, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	file, err := os.OpenFile(cfg.Logging.File, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644) //nolint:gosec // log file stays group/world-readable by design
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	_, err = file.WriteString(logLine(rep))
 	return err
 }

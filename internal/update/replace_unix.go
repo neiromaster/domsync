@@ -14,7 +14,7 @@ func ReplaceExecutable(target string, data []byte) error {
 		return err
 	}
 	name := tmp.Name()
-	defer os.Remove(name)
+	defer func() { _ = os.Remove(name) }()
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
 		return err

@@ -34,7 +34,7 @@ func TestReadFileAndRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	got, err := client.ReadFile(context.Background(), path)
 	if err != nil || string(got) != "+.a.com\n" {
@@ -61,7 +61,7 @@ func TestRunTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	if _, err := client.Run(ctx, "sleep 5", 0); !errors.Is(err, context.DeadlineExceeded) {

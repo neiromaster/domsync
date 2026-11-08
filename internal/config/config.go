@@ -134,11 +134,11 @@ func Load(explicit string) (*Config, error) {
 }
 
 func readConfig(configPath string) ([]byte, error) {
-	file, err := os.Open(configPath)
+	file, err := os.Open(configPath) //nolint:gosec // configPath is the user-supplied CLI argument
 	if err != nil {
 		return nil, fmt.Errorf("config %s: %w", configPath, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	data, err := io.ReadAll(io.LimitReader(file, maxConfigSize+1))
 	if err != nil {
 		return nil, fmt.Errorf("config %s: %w", configPath, err)

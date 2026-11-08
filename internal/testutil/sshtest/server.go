@@ -64,7 +64,7 @@ func Start(t *testing.T) *Env {
 		t.Fatalf("write client key: %v", err)
 	}
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
@@ -74,7 +74,7 @@ func Start(t *testing.T) *Env {
 	knownHostsPath := filepath.Join(dir, "known_hosts")
 	line := knownhosts.Line([]string{addr}, hostSigner.PublicKey()) + "\n"
 	if err := os.WriteFile(knownHostsPath, []byte(line), 0o600); err != nil {
-		listener.Close()
+		_ = listener.Close()
 		t.Fatalf("write known hosts: %v", err)
 	}
 
@@ -105,9 +105,9 @@ func Start(t *testing.T) *Env {
 func (s *server) stop() {
 	s.mu.Lock()
 	s.stopping = true
-	s.listener.Close()
+	_ = s.listener.Close()
 	for conn := range s.conns {
-		conn.Close()
+		_ = conn.Close()
 	}
 	s.mu.Unlock()
 	s.wg.Wait()
@@ -123,7 +123,7 @@ func (s *server) accept(config *ssh.ServerConfig) {
 		s.mu.Lock()
 		if s.stopping {
 			s.mu.Unlock()
-			conn.Close()
+			_ = conn.Close()
 			continue
 		}
 		s.conns[conn] = struct{}{}
@@ -139,13 +139,13 @@ func (s *server) serve(conn net.Conn, config *ssh.ServerConfig) {
 		s.mu.Lock()
 		delete(s.conns, conn)
 		s.mu.Unlock()
-		conn.Close()
+		_ = conn.Close()
 	}()
 	serverConn, chans, reqs, err := ssh.NewServerConn(conn, config)
 	if err != nil {
 		return
 	}
-	defer serverConn.Close()
+	defer func() { _ = serverConn.Close() }()
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -153,7 +153,7 @@ func (s *server) serve(conn net.Conn, config *ssh.ServerConfig) {
 	}()
 	for newChannel := range chans {
 		if newChannel.ChannelType() != "session" {
-			newChannel.Reject(ssh.UnknownChannelType, "unsupported channel type")
+			_ = newChannel.Reject(ssh.UnknownChannelType, "unsupported channel type")
 			continue
 		}
 		channel, requests, err := newChannel.Accept()
@@ -167,25 +167,25 @@ func (s *server) serve(conn net.Conn, config *ssh.ServerConfig) {
 
 func (s *server) handleSession(channel ssh.Channel, requests <-chan *ssh.Request) {
 	defer s.wg.Done()
-	defer channel.Close()
+	defer func() { _ = channel.Close() }()
 	for request := range requests {
 		if request.Type != "exec" {
-			request.Reply(false, nil)
+			_ = request.Reply(false, nil)
 			continue
 		}
 		var payload struct {
 			Command string
 		}
 		if err := ssh.Unmarshal(request.Payload, &payload); err != nil {
-			request.Reply(false, nil)
+			_ = request.Reply(false, nil)
 			return
 		}
-		request.Reply(true, nil)
+		_ = request.Reply(true, nil)
 		status := runCommand(channel, payload.Command, requests)
 		exit := struct {
 			Status uint32
-		}{Status: uint32(status)}
-		channel.SendRequest("exit-status", false, ssh.Marshal(&exit))
+		}{Status: uint32(status)} //nolint:gosec // status is 0-255 by the exec exit-status contract
+		_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(&exit))
 		return
 	}
 }
@@ -193,7 +193,7 @@ func (s *server) handleSession(channel ssh.Channel, requests <-chan *ssh.Request
 func runCommand(channel ssh.Channel, command string, requests <-chan *ssh.Request) int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	cmd := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // running the client-supplied command is the purpose of this test server
 	cmd.Stdin = channel
 	cmd.Stdout = channel
 	cmd.Stderr = channel.Stderr()
@@ -215,10 +215,10 @@ func runCommand(channel ssh.Channel, command string, requests <-chan *ssh.Reques
 			}
 			if request.Type == "signal" {
 				cancel()
-				channel.Close()
+				_ = channel.Close()
 				return exitCode(<-done)
 			}
-			request.Reply(false, nil)
+			_ = request.Reply(false, nil)
 		}
 	}
 }

@@ -56,7 +56,7 @@ type Client struct {
 }
 
 func Dial(ctx context.Context, opts Options) (*Client, error) {
-	auth, agentConn, err := authMethods(opts)
+	auth, agentConn, err := authMethods(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -81,18 +81,18 @@ func Dial(ctx context.Context, opts Options) (*Client, error) {
 		return nil, fmt.Errorf("dial %s: %w", addr, err)
 	}
 	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		closeConn(agentConn)
 		return nil, fmt.Errorf("dial %s: %w", addr, err)
 	}
 	sshConn, chans, reqs, err := ssh.NewClientConn(conn, addr, config)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		closeConn(agentConn)
 		return nil, fmt.Errorf("ssh %s: %w", addr, err)
 	}
 	if err := conn.SetDeadline(time.Time{}); err != nil {
-		sshConn.Close()
+		_ = sshConn.Close()
 		closeConn(agentConn)
 		return nil, fmt.Errorf("ssh %s: %w", addr, err)
 	}
@@ -105,7 +105,7 @@ func Dial(ctx context.Context, opts Options) (*Client, error) {
 	return client, nil
 }
 
-func authMethods(opts Options) ([]ssh.AuthMethod, net.Conn, error) {
+func authMethods(ctx context.Context, opts Options) ([]ssh.AuthMethod, net.Conn, error) {
 	var methods []ssh.AuthMethod
 	if opts.KeyPath != "" {
 		key, err := loadKey(opts)
@@ -117,7 +117,7 @@ func authMethods(opts Options) ([]ssh.AuthMethod, net.Conn, error) {
 	var agentConn net.Conn
 	var agentErr error
 	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
-		conn, err := net.Dial("unix", sock)
+		conn, err := (&net.Dialer{}).DialContext(ctx, "unix", sock) //nolint:gosec // SSH_AUTH_SOCK is the user's own agent socket
 		if err != nil {
 			agentErr = err
 		} else {
@@ -194,7 +194,7 @@ func loadKey(opts Options) (ssh.Signer, error) {
 
 func closeConn(conn net.Conn) {
 	if conn != nil {
-		conn.Close()
+		_ = conn.Close()
 	}
 }
 
@@ -253,7 +253,7 @@ func (c *Client) runWithStdin(ctx context.Context, command string, stdin io.Read
 	if err != nil {
 		return CommandResult{}, fmt.Errorf("open session: %w", err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 	var stdout, stderr bytes.Buffer
 	session.Stdout = &stdout
 	session.Stderr = &stderr
@@ -279,7 +279,7 @@ func (c *Client) runWithStdin(ctx context.Context, command string, stdin io.Read
 		return result, fmt.Errorf("wait for command: %w", waitErr)
 	case <-ctx.Done():
 		_ = session.Signal(ssh.SIGKILL)
-		session.Close()
+		_ = session.Close()
 		return CommandResult{}, ctx.Err()
 	}
 }
