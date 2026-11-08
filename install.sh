@@ -36,7 +36,8 @@ version=${tag#v}
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/domsync.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
-trap 'exit' INT TERM HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
 
 archive="domsync_${version}_${os}_${arch}"
 download_url="${BASE_URL}/download/v${version}"
@@ -46,15 +47,19 @@ curl -fsSL -o "${tmp}/${archive}.tar.gz" "${download_url}/${archive}.tar.gz"
 curl -fsSL -o "${tmp}/checksums.txt" "${download_url}/checksums.txt"
 
 if command -v sha256sum >/dev/null 2>&1; then
-  (cd "$tmp" && grep "  ${archive}.tar.gz\$" checksums.txt | sha256sum -c -)
+  sum_line=$(grep "  ${archive}.tar.gz\$" "$tmp/checksums.txt") || fail "checksum for ${archive}.tar.gz missing from checksums.txt"
+  printf '%s\n' "$sum_line" | (cd "$tmp" && sha256sum -c -)
 elif command -v shasum >/dev/null 2>&1; then
-  (cd "$tmp" && grep "  ${archive}.tar.gz\$" checksums.txt | shasum -a 256 -c -)
+  sum_line=$(grep "  ${archive}.tar.gz\$" "$tmp/checksums.txt") || fail "checksum for ${archive}.tar.gz missing from checksums.txt"
+  printf '%s\n' "$sum_line" | (cd "$tmp" && shasum -a 256 -c -)
 else
   fail "neither sha256sum nor shasum is available; refusing to install unverified artifacts"
 fi
 
 tar -xzf "${tmp}/${archive}.tar.gz" -C "$tmp"
-[ -f "${tmp}/domsync" ] || fail "domsync binary not found in the archive"
+if [ ! -f "${tmp}/domsync" ] || [ -L "${tmp}/domsync" ]; then
+  fail "domsync in the archive is not a regular file"
+fi
 chmod +x "${tmp}/domsync"
 
 if command -v cosign >/dev/null 2>&1; then
