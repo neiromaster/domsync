@@ -215,7 +215,7 @@ func TestSyncCommandFailureStillRendersWritten(t *testing.T) {
 	}
 }
 
-func TestSyncLocalOnlyRewriteClaimsLocalWrite(t *testing.T) {
+func TestSyncLocalOnlyRewriteDoesNotRenderWritten(t *testing.T) {
 	cfgPath, f := setup(t, "[media]\n+.b.com\n+.a.com\n", "# [media]\n+.a.com\n+.b.com\n")
 	rep, err := Sync(context.Background(), SyncOptions{ConfigPath: cfgPath}, func(context.Context, config.Config) (Runner, error) { return f, nil })
 	if err != nil {
@@ -226,7 +226,10 @@ func TestSyncLocalOnlyRewriteClaimsLocalWrite(t *testing.T) {
 	}
 	var human bytes.Buffer
 	report.Human(&human, rep)
-	if !strings.Contains(human.String(), "локально: +0 −0, записан") {
+	if strings.Contains(human.String(), ", записан") {
+		t.Fatalf("human claims a write: %q", human.String())
+	}
+	if !strings.Contains(human.String(), "локально: +0 −0") {
 		t.Fatalf("human = %q", human.String())
 	}
 }

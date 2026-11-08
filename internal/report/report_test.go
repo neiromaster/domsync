@@ -126,7 +126,7 @@ func TestHumanChanged(t *testing.T) {
 	})
 	want := "domsync: 2 домена, 1 секция\n" +
 		"  роутер: +1 −1, записан, бэкап /r.domsync.bak\n" +
-		"  локально: +1 −1, записан, перемещён 1\n"
+		"  локально: +1 −1, перемещён 1\n"
 	if buf.String() != want {
 		t.Fatalf("output = %q, want %q", buf.String(), want)
 	}

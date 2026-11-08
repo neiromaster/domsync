@@ -233,12 +233,12 @@ The default human report is Russian and looks like this for a run that changed b
 ```text
 domsync: 14 доменов, 3 секции
   роутер: +1 −1, записан, бэкап /etc/openclash/rule_provider/domsync.txt.domsync.bak
-  локально: +1 −1, записан, перемещён 1
+  локально: +1 −1, перемещён 1
   команда: /etc/init.d/openclash restart — ok, 2.1s
 ```
 
 - The header reports the total number of domains and non-empty sections.
-- `роутер` and `локально` show added and removed counts with the U+2212 minus sign. A file line adds `записан` only when that file was actually written; the router line also shows the backup path when a backup was made, and the local line adds `перемещён N` for moved patterns.
+- `роутер` and `локально` show added and removed counts with the U+2212 minus sign. The router line adds `записан` only when the file was actually written, and the backup path when a backup was made; the local line adds `перемещён N` for moved patterns.
 - `без изменений` means that file was already identical.
 - With `--dry-run`, each changed file is marked `будет записан (dry-run)`.
 - Command results are `ok, <duration>` or `ошибка <exit code>`; a transport failure prints `ошибка: <message>`.
