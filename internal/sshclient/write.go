@@ -45,28 +45,31 @@ func (c *Client) WriteFileAtomic(ctx context.Context, path string, data []byte, 
 	if result.ExitCode != 0 {
 		return WriteResult{}, fmt.Errorf("write %s: exit %d: %s", path, result.ExitCode, strings.TrimSpace(result.Stderr))
 	}
+	backupPath := strings.TrimSpace(result.Stdout)
 	written, err := c.ReadFile(ctx, path)
 	if err != nil {
-		return WriteResult{}, fmt.Errorf("verify %s: %w", path, err)
+		return WriteResult{BackupPath: backupPath}, fmt.Errorf("verify %s: %w", path, err)
 	}
 	if !bytes.Equal(written, data) {
-		return WriteResult{}, fmt.Errorf("verify %s: read back %d bytes, wrote %d: %w", path, len(written), len(data), ErrVerify)
+		return WriteResult{BackupPath: backupPath}, fmt.Errorf("verify %s: read back %d bytes, wrote %d: %w", path, len(written), len(data), ErrVerify)
 	}
-	return WriteResult{BackupPath: strings.TrimSpace(result.Stdout)}, nil
+	return WriteResult{BackupPath: backupPath}, nil
 }
 
 func writeScript(path, backup string, mode fs.FileMode) string {
 	return fmt.Sprintf(`set -eu
 path=%s
 backup=%s
-dir=$(dirname "$path")
-tmp="$dir/.domsync.$$.tmp"
+target=$(readlink -f "$path" 2>/dev/null || printf '%%s' "$path")
+if [ -d "$target" ]; then echo "domsync: target is a directory" >&2; exit 1; fi
+tmp="$(dirname "$target")/.domsync.$$.tmp"
 trap 'rm -f "$tmp"' EXIT
 cat > "$tmp"
 chmod %04o "$tmp"
-if [ -f "$path" ]; then
-  cp -p "$path" "$backup" && printf '%%s\n' "$backup"
+if [ -n "$backup" ] && [ -e "$target" ]; then
+  cp -p "$target" "$backup"
 fi
-mv "$tmp" "$path"
+mv "$tmp" "$target"
+if [ -n "$backup" ] && [ -e "$backup" ]; then printf '%%s\n' "$backup"; fi
 `, shellQuote(path), shellQuote(backup), mode)
 }
