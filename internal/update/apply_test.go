@@ -12,6 +12,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -185,7 +187,7 @@ func TestApplyVerifiesAndReplacesZip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o755 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o755 {
 		t.Fatalf("mode = %o, want 755", info.Mode().Perm())
 	}
 }
@@ -206,6 +208,9 @@ func TestApplyRejectsZipTraversal(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected traversal error")
+	}
+	if !strings.Contains(err.Error(), "../evil") {
+		t.Fatalf("error does not name the offending entry: %v", err)
 	}
 	body, _ := os.ReadFile(target)
 	if string(body) != "old" {
