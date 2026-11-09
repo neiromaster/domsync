@@ -195,6 +195,17 @@ YAML parsing is strict: unknown fields, multiple YAML documents and an empty fil
 
 Config validation runs before SSH is dialled: a missing key file, a missing `known_hosts`, or an empty `target.ssh_key` with `SSH_AUTH_SOCK` unset fails with exit code 1 before any connection is attempted.
 
+## Validation
+
+`domsync validate` loads the configuration and parses the local list without opening an SSH connection. It covers everything `domsync` checks before dialing the router — the config schema, path resolution, the existence of `target.ssh_key` and `target.known_hosts`, and the local list syntax — and nothing that needs the router.
+
+```sh
+domsync validate
+domsync --json validate
+```
+
+Exit codes follow the table below: `1` for a configuration or read error and `2` for an invalid local list. With `--json` the output is one object with `ok`, `config`, `domains`, `total` and `sections`; on failure it carries an `error` object with the exit code and message.
+
 ## Exit codes
 
 | Code | Meaning |
