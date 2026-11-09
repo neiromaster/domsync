@@ -19,7 +19,7 @@ The cask works on macOS and, with Homebrew 6.0 or newer, on Linux.
 npm (macOS, Linux and Windows):
 
 ```sh
-npm i -g domsync
+npm i -g @domsync/cli
 ```
 
 Install script (macOS and Linux):
@@ -221,10 +221,10 @@ domsync does not replace binaries installed by Homebrew or npm. The install meth
 
 ```text
 domsync установлен через Homebrew. Обновление: brew upgrade --cask domsync
-domsync установлен через npm. Обновление: npm i -g domsync@latest
+domsync установлен через npm. Обновление: npm i -g @domsync/cli@latest
 ```
 
-So update those installs with `brew upgrade --cask domsync` or `npm i -g domsync@latest`. The same refusal applies to `domsync update --check`, because install detection happens first. A standalone binary is replaced atomically after its archive has been checked against `checksums.txt`.
+So update those installs with `brew upgrade --cask domsync` or `npm i -g @domsync/cli@latest`. The same refusal applies to `domsync update --check`, because install detection happens first. A standalone binary is replaced atomically after its archive has been checked against `checksums.txt`.
 
 ## Output
 
@@ -289,7 +289,7 @@ go test ./internal/domainlist -run '^$' -fuzz FuzzParseRemote -fuzztime 30s
 
 Tagging `v*` runs `.github/workflows/release.yml`. Maintainers need:
 
-- **No npm token.** The `npm` job requests `id-token: write` and `.github/scripts/publish-npm.sh` publishes the `domsync` launcher and the six `@domsync/<os>-<cpu>` platform packages through [trusted publishing](https://docs.npmjs.com/trusted-publishers/): npm exchanges the GitHub OIDC token for a short-lived credential and attaches provenance. Each of the seven package names needs a trusted publisher configured on npmjs.com (`neiromaster` / `domsync` / `release.yml`, no environment), or on the command line with `npm trust github <package> --file release.yml --repo neiromaster/domsync --allow-publish`.
+- **No npm token.** The `npm` job requests `id-token: write` and `.github/scripts/publish-npm.sh` publishes the `@domsync/cli` launcher and the six `@domsync/<os>-<cpu>` platform packages through [trusted publishing](https://docs.npmjs.com/trusted-publishers/): npm exchanges the GitHub OIDC token for a short-lived credential and attaches provenance. Each of the seven package names needs a trusted publisher configured on npmjs.com (`neiromaster` / `domsync` / `release.yml`, no environment), or on the command line with `npm trust github <package> --file release.yml --repo neiromaster/domsync --allow-publish`.
   npm only accepts a trusted publisher for a package that already exists, so the first release is published once by a maintainer: run `npm login` (2FA), then, after the GitHub release exists, `GITHUB_TOKEN=$(gh auth token) GITHUB_REF_NAME=<tag> GITHUB_REPOSITORY=neiromaster/domsync ./.github/scripts/publish-npm.sh`. After that, tag pushes publish without credentials. The script generates provenance only inside GitHub Actions, so the bootstrap version is published without it.
 - A `neiromaster/homebrew-tap` repository and a `HOMEBREW_TAP_TOKEN` secret with write access to it, used by the cask publisher.
 - A **public** repository. The Scorecard workflow sets `publish_results: true`, which requires public visibility.

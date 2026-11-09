@@ -74,8 +74,8 @@ for pair in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 wind
 done
 
 launcher_dir="$WORK/packages/domsync"
-if npm view "domsync@$VERSION" version >/dev/null 2>&1; then
-  echo "skip domsync (already published)"
+if npm view "@domsync/cli@$VERSION" version >/dev/null 2>&1; then
+  echo "skip @domsync/cli (already published)"
 else
   cp -R "$ROOT/npm/domsync" "$launcher_dir"
   (

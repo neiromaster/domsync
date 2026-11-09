@@ -1,5 +1,5 @@
 {
-  "name": "domsync",
+  "name": "@domsync/cli",
   "version": "0.0.0",
   "description": "Sync a local domain list to an OpenClash rule-provider file",
   "license": "MIT",
