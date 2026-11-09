@@ -38,14 +38,14 @@ func TestExecStdinWritesFile(t *testing.T) {
 	client := dial(t, env)
 	defer func() { _ = client.Close() }()
 
-	path := filepath.Join(t.TempDir(), "written.txt")
+	path := filepath.ToSlash(filepath.Join(t.TempDir(), "written.txt"))
 	session, err := client.NewSession()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = session.Close() }()
 	session.Stdin = strings.NewReader("+.example.com\n")
-	if err := session.Run("cat > " + path); err != nil {
+	if err := session.Run("cat > " + shellQuote(path)); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(path)
@@ -55,6 +55,10 @@ func TestExecStdinWritesFile(t *testing.T) {
 	if string(data) != "+.example.com\n" {
 		t.Fatalf("file = %q, want %q", data, "+.example.com\n")
 	}
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func dial(t *testing.T, env *Env) *ssh.Client {
