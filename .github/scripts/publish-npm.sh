@@ -2,7 +2,6 @@
 set -eu
 
 export GH_TOKEN="$GITHUB_TOKEN"
-npm config set --location=user "//registry.npmjs.org/:_authToken" "${NPM_TOKEN:?NPM_TOKEN is not set}"
 TAG="${GITHUB_REF_NAME:?GITHUB_REF_NAME is not set}"
 VERSION="${TAG#v}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

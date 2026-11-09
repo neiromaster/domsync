@@ -289,7 +289,8 @@ go test ./internal/domainlist -run '^$' -fuzz FuzzParseRemote -fuzztime 30s
 
 Tagging `v*` runs `.github/workflows/release.yml`. Maintainers need:
 
-- An `NPM_TOKEN` repository secret. `.github/scripts/publish-npm.sh` requires it to publish the `domsync` launcher and the six `@domsync/<os>-<cpu>` platform packages; the npm job also has `id-token: write` and publishes with provenance.
+- **No npm token.** The `npm` job requests `id-token: write` and `.github/scripts/publish-npm.sh` publishes the `domsync` launcher and the six `@domsync/<os>-<cpu>` platform packages through [trusted publishing](https://docs.npmjs.com/trusted-publishers/): npm exchanges the GitHub OIDC token for a short-lived credential and attaches provenance. Each of the seven package names needs a trusted publisher configured on npmjs.com (`neiromaster` / `domsync` / `release.yml`, no environment), or on the command line with `npm trust github <package> --file release.yml --repo neiromaster/domsync --allow-publish`.
+  npm only accepts a trusted publisher for a package that already exists, so the first release is published once by a maintainer: run `npm login` (2FA), then, after the GitHub release exists, `GITHUB_TOKEN=$(gh auth token) GITHUB_REF_NAME=<tag> GITHUB_REPOSITORY=neiromaster/domsync ./.github/scripts/publish-npm.sh`. After that, tag pushes publish without credentials.
 - A `neiromaster/homebrew-tap` repository and a `HOMEBREW_TAP_TOKEN` secret with write access to it, used by the cask publisher.
 - A **public** repository. The Scorecard workflow sets `publish_results: true`, which requires public visibility.
 
