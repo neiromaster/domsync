@@ -141,7 +141,7 @@ After a successful sync the `-` lines disappear from the local file: the domain 
 
 Within each section, patterns are sorted; section order is otherwise preserved; the `other_section` is last. The local file is rewritten as a snapshot of the merged state, comments included. When the local file has sections, the router file contains `# [section]` headers followed by the same sorted patterns; a flat local file produces a flat router file. Router-only domains are added to `other_section`; if the local file already has that section it is reused, so a second one is never created.
 
-An empty local file, or a plan whose final list would be empty, is an error: domsync refuses to wipe the router.
+A missing local file is treated as an empty list, so the first run bootstraps the local snapshot from the router: every router domain is adopted and written locally. An empty local file with an empty router is a no-op. A plan whose final list would be empty while the router is not is an error: domsync refuses to wipe the router.
 
 ### Router file validation
 

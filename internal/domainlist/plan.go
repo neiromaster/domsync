@@ -45,10 +45,6 @@ func BuildPlan(in Input) (*Plan, error) {
 		negatives[negative.Pattern] = negative
 	}
 
-	if len(positives) == 0 && len(negatives) == 0 {
-		return nil, errors.New("local domain list is empty: refusing to build a plan")
-	}
-
 	remoteSet := make(map[string]struct{}, len(in.Remote))
 	for _, pattern := range in.Remote {
 		remoteSet[pattern] = struct{}{}
@@ -68,7 +64,7 @@ func BuildPlan(in Input) (*Plan, error) {
 		final[pattern] = in.OtherSection
 	}
 
-	if len(final) == 0 {
+	if len(final) == 0 && len(remoteSet) > 0 {
 		return nil, errors.New("refusing to write an empty domain list")
 	}
 

@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -212,6 +214,46 @@ func TestSyncCommandFailureStillRendersWritten(t *testing.T) {
 	report.Human(&human, rep)
 	if !strings.Contains(human.String(), "роутер: +1 −0, записан") {
 		t.Fatalf("human = %q", human.String())
+	}
+}
+
+func TestSyncCreatesMissingLocalFileFromRouter(t *testing.T) {
+	cfgPath, f := setup(t, "", "+.b.com\n+.a.com\n")
+	localPath := filepath.Join(filepath.Dir(cfgPath), "domains.txt")
+	if err := os.Remove(localPath); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Sync(context.Background(), SyncOptions{ConfigPath: cfgPath}, func(context.Context, config.Config) (Runner, error) { return f, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "+.a.com\n+.b.com\n" {
+		t.Fatalf("local = %q", got)
+	}
+	if !rep.Local.Written || !reflect.DeepEqual(rep.Local.Added, []string{"+.a.com", "+.b.com"}) || rep.Total != 2 {
+		t.Fatalf("report = %+v", rep)
+	}
+}
+
+func TestSyncEmptyLocalAndRouterIsANoop(t *testing.T) {
+	cfgPath, f := setup(t, "", "")
+	localPath := filepath.Join(filepath.Dir(cfgPath), "domains.txt")
+	if err := os.Remove(localPath); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Sync(context.Background(), SyncOptions{ConfigPath: cfgPath}, func(context.Context, config.Config) (Runner, error) { return f, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Changed || len(f.writes) != 0 || len(f.commands) != 0 {
+		t.Fatalf("report=%+v writes=%v commands=%v", rep, f.writes, f.commands)
+	}
+	if _, err := os.Stat(localPath); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("local file was created in an empty initial state: %v", err)
 	}
 }
 

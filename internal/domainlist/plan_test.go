@@ -173,7 +173,6 @@ func TestBuildPlanErrors(t *testing.T) {
 	}{
 		{"duplicate positive", "[a]\n+.x.com\n[b]\n+.x.com\n", "other", "duplicate"},
 		{"duplicate negative", "[a]\n-+.x.com\n-+.x.com\n", "other", "duplicate"},
-		{"empty final", "[a]\n-+.x.com\n", "other", "empty"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -241,6 +240,42 @@ func TestGoldenBasic(t *testing.T) {
 	}
 	if len(plan.RouterRemoved) != 0 {
 		t.Fatalf("router removed = %v, want none", plan.RouterRemoved)
+	}
+}
+
+func TestBuildPlanBootstrapsEmptyLocalFromRemote(t *testing.T) {
+	plan, err := BuildPlan(Input{
+		Local:  local(t, ""),
+		Remote: []string{"+.b.com", "+.a.com"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.HasSections || !reflect.DeepEqual(plan.Flat, []string{"+.a.com", "+.b.com"}) {
+		t.Fatalf("plan = %+v", plan)
+	}
+	if !reflect.DeepEqual(plan.LocalAdded, []string{"+.a.com", "+.b.com"}) {
+		t.Fatalf("local added = %v", plan.LocalAdded)
+	}
+	if len(plan.RouterAdded) != 0 || len(plan.RouterRemoved) != 0 {
+		t.Fatalf("router changes = %v/-%v", plan.RouterAdded, plan.RouterRemoved)
+	}
+}
+
+func TestBuildPlanEmptyEverythingIsANoop(t *testing.T) {
+	plan, err := BuildPlan(Input{Local: local(t, "")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Count() != 0 || len(RenderLocal(plan)) != 0 || len(RenderRemote(plan)) != 0 {
+		t.Fatalf("plan = %+v local=%q remote=%q", plan, RenderLocal(plan), RenderRemote(plan))
+	}
+}
+
+func TestBuildPlanRefusesToEmptyRouter(t *testing.T) {
+	_, err := BuildPlan(Input{Local: local(t, "-+.a.com\n"), Remote: []string{"+.a.com"}})
+	if err == nil || !strings.Contains(err.Error(), "refusing to write an empty domain list") {
+		t.Fatalf("error = %v", err)
 	}
 }
 
