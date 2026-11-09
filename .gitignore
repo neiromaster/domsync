@@ -3,3 +3,6 @@
 /cover-domain.out
 *.test
 .domsync*.tmp
+
+/domsync.yaml
+/domains.txt

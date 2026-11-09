@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/pem"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,8 +16,82 @@ import (
 
 	"github.com/neiromaster/domsync/internal/testutil/sshtest"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
+
+func writeEncryptedKey(t *testing.T) string {
+	t.Helper()
+	_, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, err := ssh.MarshalPrivateKeyWithPassphrase(private, "", []byte("secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "key")
+	if err := os.WriteFile(path, pem.EncodeToMemory(block), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestAuthMethodsEncryptedKeyWithoutAgentFails(t *testing.T) {
+	t.Setenv("SSH_AUTH_SOCK", "")
+	_, _, err := authMethods(context.Background(), Options{KeyPath: writeEncryptedKey(t)})
+	if !errors.Is(err, ErrPassphraseNeeded) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestAuthMethodsEncryptedKeyFallsBackToAgent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix sockets are not available")
+	}
+	dir, err := os.MkdirTemp("/tmp", "domsync-agent")
+	if err != nil {
+		t.Skipf("short temp dir unavailable: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	sock := filepath.Join(dir, "agent.sock")
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "unix", sock)
+	if err != nil {
+		t.Skipf("unix socket unavailable: %v", err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	_, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyring := agent.NewKeyring()
+	if err := keyring.Add(agent.AddedKey{PrivateKey: private}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func() { _ = agent.ServeAgent(keyring, conn) }()
+		}
+	}()
+	t.Setenv("SSH_AUTH_SOCK", sock)
+
+	methods, agentConn, err := authMethods(context.Background(), Options{KeyPath: writeEncryptedKey(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if agentConn != nil {
+			_ = agentConn.Close()
+		}
+	}()
+	if len(methods) != 1 {
+		t.Fatalf("methods = %d, want the agent fallback", len(methods))
+	}
+}
 
 func TestReadFileAndRun(t *testing.T) {
 	if runtime.GOOS == "windows" {

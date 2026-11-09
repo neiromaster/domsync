@@ -45,3 +45,9 @@ homebrew_casks:
     homepage: "https://github.com/neiromaster/domsync"
     description: "Sync a local domain list to an OpenClash rule-provider file"
     binaries: [domsync]
+    hooks:
+      post:
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/domsync"]
+          end

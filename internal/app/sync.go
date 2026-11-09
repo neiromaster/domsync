@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"strconv"
 	"strings"
@@ -49,9 +50,6 @@ func Sync(ctx context.Context, opts SyncOptions, dial func(context.Context, conf
 	localFile, err := domainlist.ParseLocal(localBytes, cfg.Source.Domains)
 	if err != nil {
 		return nil, withCode(2, err)
-	}
-	if len(localFile.Flat) == 0 && len(localFile.Sections) == 0 {
-		return nil, withCode(2, fmt.Errorf("%s: local domain list is empty", cfg.Source.Domains))
 	}
 	runner, err := dial(ctx, *cfg)
 	if err != nil {
@@ -177,6 +175,9 @@ func checkForUpdate(ctx context.Context, opts SyncOptions, cfg *config.Config, r
 func readLocal(path string) ([]byte, error) {
 	file, err := os.Open(path) //nolint:gosec // path is the user-configured domain list location
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	defer func() { _ = file.Close() }()

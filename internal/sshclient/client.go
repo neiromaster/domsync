@@ -19,8 +19,9 @@ import (
 )
 
 var (
-	ErrNotExist = errors.New("remote file does not exist")
-	ErrVerify   = errors.New("remote read-back mismatch")
+	ErrNotExist         = errors.New("remote file does not exist")
+	ErrVerify           = errors.New("remote read-back mismatch")
+	ErrPassphraseNeeded = errors.New("ssh key is encrypted")
 )
 
 const (
@@ -71,9 +72,10 @@ func Dial(ctx context.Context, opts Options) (*Client, error) {
 		timeout = defaultDialTimeout
 	}
 	config := &ssh.ClientConfig{
-		User:            opts.User,
-		Auth:            auth,
-		HostKeyCallback: hostKey,
+		User:              opts.User,
+		Auth:              auth,
+		HostKeyCallback:   hostKey,
+		HostKeyAlgorithms: knownHostAlgorithms(opts.KnownHosts, opts.Host, opts.Port),
 	}
 	conn, err := (&net.Dialer{Timeout: timeout}).DialContext(ctx, "tcp", addr)
 	if err != nil {
@@ -107,12 +109,17 @@ func Dial(ctx context.Context, opts Options) (*Client, error) {
 
 func authMethods(ctx context.Context, opts Options) ([]ssh.AuthMethod, net.Conn, error) {
 	var methods []ssh.AuthMethod
+	var keyErr error
 	if opts.KeyPath != "" {
 		key, err := loadKey(opts)
 		if err != nil {
-			return nil, nil, err
+			if !errors.Is(err, ErrPassphraseNeeded) {
+				return nil, nil, err
+			}
+			keyErr = err
+		} else {
+			methods = append(methods, ssh.PublicKeys(key))
 		}
-		methods = append(methods, ssh.PublicKeys(key))
 	}
 	var agentConn net.Conn
 	var agentErr error
@@ -126,6 +133,9 @@ func authMethods(ctx context.Context, opts Options) ([]ssh.AuthMethod, net.Conn,
 		}
 	}
 	if len(methods) == 0 {
+		if keyErr != nil {
+			return nil, agentConn, fmt.Errorf("%w; configure a passphrase or load it into ssh-agent", keyErr)
+		}
 		if agentErr != nil {
 			return nil, agentConn, fmt.Errorf("no ssh authentication method configured: ssh agent: %w", agentErr)
 		}
@@ -178,7 +188,7 @@ func loadKey(opts Options) (ssh.Signer, error) {
 	var missing *ssh.PassphraseMissingError
 	if errors.As(err, &missing) {
 		if opts.Passphrase == nil {
-			return nil, fmt.Errorf("ssh key %s: encrypted key and no passphrase configured", opts.KeyPath)
+			return nil, fmt.Errorf("ssh key %s: %w", opts.KeyPath, ErrPassphraseNeeded)
 		}
 		passphrase, passErr := opts.Passphrase()
 		if passErr != nil {

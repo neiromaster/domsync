@@ -141,7 +141,7 @@ After a successful sync the `-` lines disappear from the local file: the domain 
 
 Within each section, patterns are sorted; section order is otherwise preserved; the `other_section` is last. The local file is rewritten as a snapshot of the merged state, comments included. When the local file has sections, the router file contains `# [section]` headers followed by the same sorted patterns; a flat local file produces a flat router file. Router-only domains are added to `other_section`; if the local file already has that section it is reused, so a second one is never created.
 
-An empty local file, or a plan whose final list would be empty, is an error: domsync refuses to wipe the router.
+A missing local file is treated as an empty list, so the first run bootstraps the local snapshot from the router: every router domain is adopted and written locally. An empty local file with an empty router is a no-op. A plan whose final list would be empty while the router is not is an error: domsync refuses to wipe the router.
 
 ### Router file validation
 
@@ -251,7 +251,7 @@ domsync: 14 доменов, 3 секции
 
 ## Security
 
-- **Strict host key checking.** Every connection verifies the router key against `known_hosts` using `golang.org/x/crypto/ssh/knownhosts`, whether authentication uses a key file or the ssh-agent. An unknown key aborts with its SHA-256 fingerprint and a `ssh-keyscan` hint; a changed key aborts naming both the presented and the expected fingerprints. TOFU does not exist in v1.
+- **Strict host key checking.** Every connection verifies the router key against `known_hosts` using `golang.org/x/crypto/ssh/knownhosts`, whether authentication uses a key file or the ssh-agent. An unknown key aborts with its SHA-256 fingerprint and a `ssh-keyscan` hint; a changed key aborts naming both the presented and the expected fingerprints. TOFU does not exist in v1. The host key type is negotiated from the algorithms recorded for the host in `known_hosts`, so a host with only one recorded key type is not rejected merely because the server also offers another.
 - **Updates in v1 rely on SHA-256 only.** The binary checks the downloaded archive against `checksums.txt` from the release and extracts only the expected executable, rejecting path traversal. GoReleaser also publishes a cosign keyless signature bundle (`checksums.txt.sigstore.json`) and GitHub build attestations; these are for manual verification, not checked by the CLI. To verify a release by hand:
 
   ```sh
