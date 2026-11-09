@@ -151,6 +151,8 @@ Within each section, patterns are sorted; section order is otherwise preserved; 
 
 A missing local file is treated as an empty list, so the first run bootstraps the local snapshot from the router: every router domain is adopted and written locally. An empty local file with an empty router is a no-op. A plan whose final list would be empty while the router is not is an error: domsync refuses to wipe the router.
 
+Concurrent runs are refused. A run holds an exclusive lock on `<source.domains>.domsync.lock` from the moment the configuration is loaded until every write and post-write command has finished, so a cron job and a manual run cannot interleave their reads and writes. The lock file stays on disk after the run; the lock itself is released by the operating system when the process exits, including after a crash.
+
 ### Router file validation
 
 When reading the provider file from the router, domsync ignores blank lines and lines starting with `#` or `//`. Every other line must be a valid pattern; otherwise the run fails with the file, line number and offending text, and nothing is written. Duplicate patterns are collapsed. A bare `[media]` header on the router is therefore an error, not a domain.
@@ -198,7 +200,7 @@ Config validation runs before SSH is dialled: a missing key file, a missing `kno
 | Code | Meaning |
 |---|---|
 | `0` | Success, including "no changes". Also `--help` and `--version`. |
-| `1` | Usage or configuration error, local file read/write error, or log write error. |
+| `1` | Usage or configuration error, local file read/write error, log write error, or another run holding the local lock. |
 | `2` | Validation error in the local list or the router provider file, including `--strict` warnings, and an empty final list. |
 | `3` | SSH connection, authentication, host-key or remote read/write/verify error. |
 | `4` | Update error, including the Homebrew/npm refusal. |
