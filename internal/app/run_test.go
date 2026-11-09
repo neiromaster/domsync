@@ -4,15 +4,22 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/neiromaster/domsync/internal/version"
 )
 
 func TestRunVersionFlag(t *testing.T) {
+	oldV, oldC, oldD := version.Version, version.Commit, version.Date
+	version.Version, version.Commit, version.Date = "1.2.3", "abc123", "2026-01-02T03:04:05Z"
+	t.Cleanup(func() { version.Version, version.Commit, version.Date = oldV, oldC, oldD })
+
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"--version"}, strings.NewReader(""), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
 	}
-	if got, want := stdout.String(), "domsync dev (commit none, built unknown)\n"; got != want {
+	want := "domsync 1.2.3 (commit abc123, built 2026-01-02T03:04:05Z)\n"
+	if got := stdout.String(); got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}
 }

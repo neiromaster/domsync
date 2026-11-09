@@ -18,6 +18,9 @@ func init() {
 }
 
 func String() string {
+	if Commit == "none" && Date == "unknown" {
+		return Version
+	}
 	return fmt.Sprintf("%s (commit %s, built %s)", Version, Commit, Date)
 }
 
