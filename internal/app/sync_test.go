@@ -275,3 +275,32 @@ func TestSyncLocalOnlyRewriteDoesNotRenderWritten(t *testing.T) {
 		t.Fatalf("human = %q", human.String())
 	}
 }
+
+func TestSyncRefusesWhenAnotherRunHoldsTheLock(t *testing.T) {
+	cfgPath, f := setup(t, "+.a.com\n", "")
+	localPath := filepath.Join(filepath.Dir(cfgPath), "domains.txt")
+	lock, err := acquireRunLock(lockPath(localPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = lock.release() }()
+	_, err = Sync(context.Background(), SyncOptions{ConfigPath: cfgPath}, func(context.Context, config.Config) (Runner, error) { return f, nil })
+	if err == nil {
+		t.Fatal("expected a lock error")
+	}
+	if ExitCode(err) != 1 || !strings.Contains(err.Error(), "another domsync run is in progress") {
+		t.Fatalf("code=%d err=%v", ExitCode(err), err)
+	}
+	if len(f.writes) != 0 || len(f.commands) != 0 {
+		t.Fatalf("writes=%v commands=%v", f.writes, f.commands)
+	}
+}
+
+func TestSyncReleasesTheLock(t *testing.T) {
+	cfgPath, f := setup(t, "+.a.com\n", "")
+	for i := range 2 {
+		if _, err := Sync(context.Background(), SyncOptions{ConfigPath: cfgPath}, func(context.Context, config.Config) (Runner, error) { return f, nil }); err != nil {
+			t.Fatalf("run %d: %v", i, err)
+		}
+	}
+}

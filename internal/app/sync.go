@@ -43,6 +43,11 @@ func Sync(ctx context.Context, opts SyncOptions, dial func(context.Context, conf
 	if err != nil {
 		return nil, err
 	}
+	lock, err := acquireRunLock(lockPath(cfg.Source.Domains))
+	if err != nil {
+		return nil, withCode(1, err)
+	}
+	defer func() { _ = lock.release() }()
 	localBytes, err := readLocal(cfg.Source.Domains)
 	if err != nil {
 		return nil, err

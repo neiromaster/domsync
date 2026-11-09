@@ -6,3 +6,5 @@
 
 /domsync.yaml
 /domains.txt
+
+/domains.txt.domsync.lock
