@@ -77,6 +77,7 @@ launcher_dir="$WORK/packages/domsync"
 if npm view "@domsync/cli@$VERSION" version >/dev/null 2>&1; then
   echo "skip @domsync/cli (already published)"
 else
+  mkdir -p "$(dirname "$launcher_dir")"
   cp -R "$ROOT/npm/domsync" "$launcher_dir"
   (
     cd "$launcher_dir"
