@@ -8,6 +8,13 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+provenance=false
+publish_args=(--access public)
+if [ -n "${GITHUB_ACTIONS:-}" ]; then
+  provenance=true
+  publish_args+=(--provenance)
+fi
+
 for pair in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
   goos="${pair%/*}"
   goarch="${pair#*/}"
@@ -61,8 +68,8 @@ for pair in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 wind
       "license=MIT" \
       "repository.type=git" \
       "repository.url=https://github.com/neiromaster/domsync"
-    npm pkg set --json "publishConfig.provenance=true" "publishConfig.access=\"public\""
-    npm publish --provenance --access public
+    npm pkg set --json "publishConfig.provenance=$provenance" "publishConfig.access=\"public\""
+    npm publish "${publish_args[@]}"
   )
 done
 
@@ -74,9 +81,10 @@ else
   (
     cd "$launcher_dir"
     npm pkg set "version=$VERSION"
+    npm pkg set --json "publishConfig.provenance=$provenance"
     for platform in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-arm64 win32-x64; do
       npm pkg set "optionalDependencies.@domsync/$platform=$VERSION"
     done
-    npm publish --provenance --access public
+    npm publish "${publish_args[@]}"
   )
 fi
