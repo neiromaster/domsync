@@ -41,7 +41,7 @@ Common types: `feat`, `fix`, `docs`, `test`, `ci`, `build`, `perf`, `refactor`, 
 - Branch from `main` and open a pull request; `main` is protected and accepts no direct pushes.
 - Everything in the repository — code, comments, commit messages, PR titles and descriptions, docs, release notes — is written in English.
 - Fill in the pull request template: what changed and why, how it was verified, and anything the reviewer must know.
-- All required checks must pass before the merge: `test` on Linux, macOS and Windows, `lint`, `vuln`, `fuzz`, `coverage`, and `dependency-review`. The branch must be up to date with `main`.
+- All required checks must pass before the merge: `test` on Linux, macOS and Windows, `lint`, `vuln`, `fuzz`, `coverage`, `dependency-review`, and CodeQL. The branch must be up to date with `main`.
 - Pull requests are squash-merged; the branch is deleted automatically.
 - Tests come with the change. Behaviour that depends on the router, the local file, or the update path is expected to have a test in `internal/testutil/sshtest` or with a fake runner rather than a manual check only.
 
@@ -51,6 +51,7 @@ Common types: `feat`, `fix`, `docs`, `test`, `ci`, `build`, `perf`, `refactor`, 
 - Errors are wrapped with context and classified by the exit codes in the README; do not introduce a new exit code without updating the table.
 - Configuration parsing stays strict: unknown fields, multiple YAML documents, and ambiguous input are errors, not warnings.
 - Never write to the router or the local file before the whole plan has been validated.
+- Actions in `.github/workflows` are pinned to full commit SHAs with the release tag in a comment; Dependabot updates the pins, so do not introduce floating tags.
 
 ## Releasing
 
