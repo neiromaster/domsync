@@ -23,12 +23,12 @@ jobs:
           config: cliff.toml
           args: --latest --strip header
         env:
-          OUTPUT: CHANGELOG.latest.md
+          OUTPUT: ${{ runner.temp }}/CHANGELOG.latest.md
       - uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: v2.20.0
-          args: release --clean --release-notes CHANGELOG.latest.md
+          args: release --clean --release-notes ${{ runner.temp }}/CHANGELOG.latest.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
