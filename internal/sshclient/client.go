@@ -72,9 +72,10 @@ func Dial(ctx context.Context, opts Options) (*Client, error) {
 		timeout = defaultDialTimeout
 	}
 	config := &ssh.ClientConfig{
-		User:            opts.User,
-		Auth:            auth,
-		HostKeyCallback: hostKey,
+		User:              opts.User,
+		Auth:              auth,
+		HostKeyCallback:   hostKey,
+		HostKeyAlgorithms: knownHostAlgorithms(opts.KnownHosts, opts.Host, opts.Port),
 	}
 	conn, err := (&net.Dialer{Timeout: timeout}).DialContext(ctx, "tcp", addr)
 	if err != nil {

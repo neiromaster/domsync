@@ -251,7 +251,7 @@ domsync: 14 доменов, 3 секции
 
 ## Security
 
-- **Strict host key checking.** Every connection verifies the router key against `known_hosts` using `golang.org/x/crypto/ssh/knownhosts`, whether authentication uses a key file or the ssh-agent. An unknown key aborts with its SHA-256 fingerprint and a `ssh-keyscan` hint; a changed key aborts naming both the presented and the expected fingerprints. TOFU does not exist in v1.
+- **Strict host key checking.** Every connection verifies the router key against `known_hosts` using `golang.org/x/crypto/ssh/knownhosts`, whether authentication uses a key file or the ssh-agent. An unknown key aborts with its SHA-256 fingerprint and a `ssh-keyscan` hint; a changed key aborts naming both the presented and the expected fingerprints. TOFU does not exist in v1. The host key type is negotiated from the algorithms recorded for the host in `known_hosts`, so a host with only one recorded key type is not rejected merely because the server also offers another.
 - **Updates in v1 rely on SHA-256 only.** The binary checks the downloaded archive against `checksums.txt` from the release and extracts only the expected executable, rejecting path traversal. GoReleaser also publishes a cosign keyless signature bundle (`checksums.txt.sigstore.json`) and GitHub build attestations; these are for manual verification, not checked by the CLI. To verify a release by hand:
 
   ```sh
