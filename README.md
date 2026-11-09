@@ -22,6 +22,14 @@ npm (macOS, Linux and Windows):
 npm i -g @domsync/cli
 ```
 
+Go (any platform with a Go toolchain, built from source):
+
+```sh
+go install github.com/neiromaster/domsync/cmd/domsync@latest
+```
+
+`go install` places the binary in `$GOBIN` (or `$HOME/go/bin`). The toolchain version is pinned in `go.mod`.
+
 Install script (macOS and Linux):
 
 ```sh
@@ -295,6 +303,10 @@ Tagging `v*` runs `.github/workflows/release.yml`. Maintainers need:
 - A **public** repository. The Scorecard workflow sets `publish_results: true`, which requires public visibility.
 
 GoReleaser builds the archives, `checksums.txt`, the cosign bundle and SBOMs, publishes the GitHub release and the Homebrew cask; the release workflow adds build provenance attestations and then publishes the npm packages.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, commit conventions and the pull request workflow. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
 

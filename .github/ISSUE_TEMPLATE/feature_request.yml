@@ -1,0 +1,28 @@
+name: Feature request
+description: Propose a change in behaviour or a new capability
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do and where domsync gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: What the new behaviour would look like, including CLI and config changes if any.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you use today, or other designs you rejected.
+  - type: markdown
+    attributes:
+      value: |
+        Out of scope for v1, by design: homeproxy, subscription URLs, SSH password authentication, `ProxyJump`, a fallback to the system `ssh`, IDN domains, cryptographic verification of updates inside the CLI, and any daemon, watcher, or scheduler.

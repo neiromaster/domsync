@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/neiromaster/domsync/security/advisories/new
+    about: Report it privately. Do not open a public issue.
+  - name: Documentation
+    url: https://github.com/neiromaster/domsync#readme
+    about: Installation, configuration, file formats, exit codes, and the security model.
