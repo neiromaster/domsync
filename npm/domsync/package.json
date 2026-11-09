@@ -11,12 +11,12 @@
     "url": "https://github.com/neiromaster/domsync"
   },
   "optionalDependencies": {
-    "@neiromaster/domsync-darwin-arm64": "0.0.0",
-    "@neiromaster/domsync-darwin-x64": "0.0.0",
-    "@neiromaster/domsync-linux-arm64": "0.0.0",
-    "@neiromaster/domsync-linux-x64": "0.0.0",
-    "@neiromaster/domsync-win32-arm64": "0.0.0",
-    "@neiromaster/domsync-win32-x64": "0.0.0"
+    "@domsync/darwin-arm64": "0.0.0",
+    "@domsync/darwin-x64": "0.0.0",
+    "@domsync/linux-arm64": "0.0.0",
+    "@domsync/linux-x64": "0.0.0",
+    "@domsync/win32-arm64": "0.0.0",
+    "@domsync/win32-x64": "0.0.0"
   },
   "publishConfig": {
     "provenance": true,

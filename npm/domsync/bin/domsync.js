@@ -3,12 +3,12 @@ const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 
 const map = {
-  "darwin-arm64": "@neiromaster/domsync-darwin-arm64",
-  "darwin-x64": "@neiromaster/domsync-darwin-x64",
-  "linux-arm64": "@neiromaster/domsync-linux-arm64",
-  "linux-x64": "@neiromaster/domsync-linux-x64",
-  "win32-arm64": "@neiromaster/domsync-win32-arm64",
-  "win32-x64": "@neiromaster/domsync-win32-x64",
+  "darwin-arm64": "@domsync/darwin-arm64",
+  "darwin-x64": "@domsync/darwin-x64",
+  "linux-arm64": "@domsync/linux-arm64",
+  "linux-x64": "@domsync/linux-x64",
+  "win32-arm64": "@domsync/win32-arm64",
+  "win32-x64": "@domsync/win32-x64",
 };
 const pkg = map[`${process.platform}-${process.arch}`];
 if (!pkg) {

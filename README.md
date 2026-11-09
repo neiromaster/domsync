@@ -289,7 +289,7 @@ go test ./internal/domainlist -run '^$' -fuzz FuzzParseRemote -fuzztime 30s
 
 Tagging `v*` runs `.github/workflows/release.yml`. Maintainers need:
 
-- An `NPM_TOKEN` repository secret. `.github/scripts/publish-npm.sh` requires it to publish the `domsync` launcher and the six `@neiromaster/domsync-<os>-<cpu>` platform packages; the npm job also has `id-token: write` and publishes with provenance.
+- An `NPM_TOKEN` repository secret. `.github/scripts/publish-npm.sh` requires it to publish the `domsync` launcher and the six `@domsync/<os>-<cpu>` platform packages; the npm job also has `id-token: write` and publishes with provenance.
 - A `neiromaster/homebrew-tap` repository and a `HOMEBREW_TAP_TOKEN` secret with write access to it, used by the cask publisher.
 - A **public** repository. The Scorecard workflow sets `publish_results: true`, which requires public visibility.
 

@@ -23,7 +23,7 @@ for pair in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 wind
   fi
   platform="$os-$cpu"
 
-  if npm view "@neiromaster/domsync-$platform@$VERSION" version >/dev/null 2>&1; then
+  if npm view "@domsync/$platform@$VERSION" version >/dev/null 2>&1; then
     echo "skip $platform (already published)"
     continue
   fi
@@ -50,7 +50,7 @@ for pair in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 wind
   fi
   [ -f "$pkg_dir/$bin" ]
 
-  printf '{"name":"@neiromaster/domsync-%s","version":"%s"}\n' "$platform" "$VERSION" > "$pkg_dir/package.json"
+  printf '{"name":"@domsync/%s","version":"%s"}\n' "$platform" "$VERSION" > "$pkg_dir/package.json"
 
   (
     cd "$pkg_dir"
@@ -76,7 +76,7 @@ else
     cd "$launcher_dir"
     npm pkg set "version=$VERSION"
     for platform in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-arm64 win32-x64; do
-      npm pkg set "optionalDependencies.@neiromaster/domsync-$platform=$VERSION"
+      npm pkg set "optionalDependencies.@domsync/$platform=$VERSION"
     done
     npm publish --provenance --access public
   )
