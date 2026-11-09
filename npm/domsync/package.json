@@ -1,0 +1,28 @@
+{
+  "name": "domsync",
+  "version": "0.0.0",
+  "description": "Sync a local domain list to an OpenClash rule-provider file",
+  "license": "MIT",
+  "bin": {
+    "domsync": "bin/domsync.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/neiromaster/domsync"
+  },
+  "optionalDependencies": {
+    "@domsync/darwin-arm64": "0.0.0",
+    "@domsync/darwin-x64": "0.0.0",
+    "@domsync/linux-arm64": "0.0.0",
+    "@domsync/linux-x64": "0.0.0",
+    "@domsync/win32-arm64": "0.0.0",
+    "@domsync/win32-x64": "0.0.0"
+  },
+  "publishConfig": {
+    "provenance": true,
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

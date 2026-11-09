@@ -1,0 +1,10 @@
+[changelog]
+body = """
+## {{ version }} - {{ timestamp }}
+{{#each commits}}
+- {{ this.message }}
+{{/each}}
+"""
+[git]
+conventional_commits = true
+filter_unconventional = true

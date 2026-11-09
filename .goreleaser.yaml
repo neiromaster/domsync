@@ -1,0 +1,47 @@
+version: 2
+project_name: domsync
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - id: domsync
+    main: ./cmd/domsync
+    binary: domsync
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X github.com/neiromaster/domsync/internal/version.Version={{.Version}}
+      - -X github.com/neiromaster/domsync/internal/version.Commit={{.Commit}}
+      - -X github.com/neiromaster/domsync/internal/version.Date={{.Date}}
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: "domsync_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files: [LICENSE, README.md]
+checksum:
+  name_template: checksums.txt
+release:
+  extra_files:
+    - glob: ./install.sh
+sboms:
+  - artifacts: archive
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sigstore.json"
+    args: [sign-blob, "--bundle=${signature}", "${artifact}", "--yes"]
+homebrew_casks:
+  - name: domsync
+    repository:
+      owner: neiromaster
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: "https://github.com/neiromaster/domsync"
+    description: "Sync a local domain list to an OpenClash rule-provider file"
+    binaries: [domsync]
