@@ -11,12 +11,15 @@ type CLI struct {
 	Version       bool   `name:"version" help:"Print version and exit."`
 	Help          bool   `short:"h" help:"Show help and exit."`
 
-	Update *UpdateCmd `cmd:"" help:"Update domsync to the latest release."`
+	Update   *UpdateCmd   `cmd:"" help:"Update domsync to the latest release."`
+	Validate *ValidateCmd `cmd:"" help:"Validate the configuration and the local list without connecting to the router."`
 }
 
 type UpdateCmd struct {
 	Check bool `help:"Only check for a newer version."`
 }
+
+type ValidateCmd struct{}
 
 func (c *CLI) Run() error {
 	return nil

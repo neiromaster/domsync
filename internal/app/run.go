@@ -48,6 +48,9 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if ctx.Command() == "update" {
 		return runUpdate(context.Background(), cli, stdout, stderr)
 	}
+	if ctx.Command() == "validate" {
+		return runValidate(cli, stdout, stderr)
+	}
 	return runSync(context.Background(), cli, stdout, stderr)
 }
 
