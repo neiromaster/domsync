@@ -69,8 +69,17 @@ func TestResolveWithoutBuildInfo(t *testing.T) {
 	}
 }
 
-func TestStringReportIsNotEmpty(t *testing.T) {
-	if got := String(); got == "" {
-		t.Fatal("empty version report")
+func TestStringHidesUnknownCommitAndDate(t *testing.T) {
+	setBuild(t, "1.1.0", "none", "unknown")
+	if got := String(); got != "1.1.0" {
+		t.Fatalf("String() = %q", got)
+	}
+}
+
+func TestStringIncludesCommitAndDate(t *testing.T) {
+	setBuild(t, "1.1.0", "b37de848", "2026-11-09T20:11:54Z")
+	want := "1.1.0 (commit b37de848, built 2026-11-09T20:11:54Z)"
+	if got := String(); got != want {
+		t.Fatalf("String() = %q", got)
 	}
 }
