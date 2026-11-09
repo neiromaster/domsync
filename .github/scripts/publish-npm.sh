@@ -67,7 +67,7 @@ for pair in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 wind
       "files[1]=domsync.exe" \
       "license=MIT" \
       "repository.type=git" \
-      "repository.url=https://github.com/neiromaster/domsync"
+      "repository.url=git+https://github.com/neiromaster/domsync.git"
     npm pkg set --json "publishConfig.provenance=$provenance" "publishConfig.access=\"public\""
     npm publish "${publish_args[@]}"
   )
