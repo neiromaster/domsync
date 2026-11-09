@@ -1,0 +1,71 @@
+name: Bug report
+description: Report a case where domsync fails, misbehaves, or writes something unexpected
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report security vulnerabilities here. Use [private vulnerability reporting](../security/advisories/new) instead.
+
+        Redact `target.host`, `target.user`, key paths, and anything else you consider private.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The observed behaviour and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The exact command, the relevant part of `domsync.yaml`, and the local list when it matters.
+      placeholder: |
+        1. Run `domsync --dry-run --verbose`
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: domsync version
+      description: The output of `domsync --version`.
+      placeholder: domsync v1.0.1
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation method
+      options:
+        - Homebrew
+        - npm
+        - install.sh
+        - go install
+        - Release archive
+        - Built from source
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS and architecture
+      placeholder: macOS 15.2 arm64
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Report and logs
+      description: Paste `domsync --json --dry-run` output (redacted). Add `--verbose`, `--dry-run` still connects to the router but writes nothing.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues for the same problem.
+          required: true
+        - label: I removed secrets and private host names from everything pasted here.
+          required: true

@@ -1,3 +1,9 @@
+// Command domsync keeps a local sectioned domain list in sync with an
+// OpenClash/Mihomo rule-provider file on a router over SSH.
+//
+// Configuration is read from domsync.yaml. The repository README documents the
+// file formats, configuration keys, exit codes and the security model:
+// https://github.com/neiromaster/domsync#readme
 package main
 
 import (
