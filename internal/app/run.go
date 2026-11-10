@@ -17,7 +17,6 @@ import (
 )
 
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	_ = stdin
 	var cli CLI
 	parser, err := kong.New(&cli,
 		kong.Name("domsync"),
@@ -50,6 +49,9 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	if ctx.Command() == "validate" {
 		return runValidate(cli, stdout, stderr)
+	}
+	if ctx.Command() == "uninstall" {
+		return runUninstall(context.Background(), cli, stdin, stdout, stderr)
 	}
 	return runSync(context.Background(), cli, stdout, stderr)
 }

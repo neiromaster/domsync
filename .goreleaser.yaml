@@ -45,6 +45,10 @@ homebrew_casks:
     homepage: "https://github.com/neiromaster/domsync"
     description: "Sync a local domain list to an OpenClash rule-provider file"
     binaries: [domsync]
+    zap:
+      delete:
+        - "~/Library/Caches/domsync"
+        - "~/.cache/domsync"
     hooks:
       post:
         install_steps: |

@@ -9,6 +9,7 @@ type Report struct {
 	Servers  []ServerResult `json:"servers"`
 	Warnings []string       `json:"warnings"`
 	Update   *UpdateInfo    `json:"update,omitempty"`
+	Removed  []string       `json:"removed,omitempty"`
 	Error    *ErrorInfo     `json:"error,omitempty"`
 }
 
