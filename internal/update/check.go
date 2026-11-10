@@ -35,14 +35,22 @@ type cacheEntry struct {
 
 var defaultClient = &http.Client{Timeout: 2 * time.Second}
 
+func CacheDir() (string, error) {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "domsync"), nil
+}
+
 func NewChecker() *Checker {
 	c := &Checker{
 		BaseURL: "https://api.github.com",
 		Repo:    "neiromaster/domsync",
 		Client:  defaultClient,
 	}
-	if dir, err := os.UserCacheDir(); err == nil {
-		c.CachePath = filepath.Join(dir, "domsync", "update.json")
+	if dir, err := CacheDir(); err == nil {
+		c.CachePath = filepath.Join(dir, "update.json")
 	}
 	return c
 }

@@ -240,7 +240,7 @@ With `--json` the output is one object with `ok` and `servers`; each server carr
 | `1` | Usage or configuration error, local file read/write error, log write error, or another run holding the config lock. |
 | `2` | Validation error in a local list or a provider file, including `--strict` warnings, and an empty final list. |
 | `3` | SSH connection, authentication, host-key or remote read/write/verify error. |
-| `4` | Update error, including the Homebrew/npm refusal. |
+| `4` | Update error, including the Homebrew/npm refusal; uninstall cancelled or left to a package manager. |
 | `5` | A post-write command failed (non-zero exit or transport error). |
 
 When several things fail, the exit code is the code of the first failure in execution order: server order, then file order. A server that cannot be dialled counts at its own position, before its pairs, so a connection error beats a later pair failure. A failure in one pair or one server never stops the rest.
@@ -274,6 +274,24 @@ domsync установлен через npm. Обновление: npm i -g @dom
 ```
 
 So update those installs with `brew upgrade --cask domsync` or `npm i -g @domsync/cli@latest`. The same refusal applies to `domsync update --check`, because install detection happens first. A standalone binary is replaced atomically after its archive has been checked against `checksums.txt`.
+
+## Uninstall
+
+`domsync uninstall` removes what the installation created: the binary and the cache directory (`os.UserCacheDir()/domsync`, which holds the update cache). It never touches your config, domain lists or log file.
+
+```sh
+domsync uninstall             # asks: Удалить domsync и созданные им файлы? [y/N]
+domsync uninstall --yes       # no question, for scripts
+domsync --dry-run uninstall   # print what would be removed and change nothing
+```
+
+Enter, or anything other than `y`, `yes`, `д` or `да`, cancels and exits with code 4. Without a terminal the question cannot be asked, so `--yes` is required.
+
+The install method is detected the same way as for updates. Homebrew and npm installs are removed through the package manager: domsync runs `brew uninstall --cask --zap domsync` or `npm uninstall -g @domsync/cli` itself and then removes the cache directory. The cask declares a `zap` stanza for that directory, so `brew uninstall --cask --zap domsync` is just as complete without this command. On Windows a running npm package cannot delete itself, so the command prints the npm command and exits 4; the same happens when `brew` or `npm` is not on `PATH`, except the cache directory is still removed.
+
+The empty `<config>.domsync.lock` beside a config is a run lock, not an install artifact; it goes away with the config.
+
+With `--json` the output is the usual envelope, with `removed` listing the paths and `dry_run` set for `--dry-run`.
 
 ## Output
 

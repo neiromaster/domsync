@@ -11,8 +11,9 @@ type CLI struct {
 	Version       bool   `name:"version" help:"Print version and exit."`
 	Help          bool   `short:"h" help:"Show help and exit."`
 
-	Update   *UpdateCmd   `cmd:"" help:"Update domsync to the latest release."`
-	Validate *ValidateCmd `cmd:"" help:"Validate the configuration and the local list without connecting to the router."`
+	Update    *UpdateCmd    `cmd:"" help:"Update domsync to the latest release."`
+	Validate  *ValidateCmd  `cmd:"" help:"Validate the configuration and the local list without connecting to the router."`
+	Uninstall *UninstallCmd `cmd:"" help:"Remove domsync and the files it created."`
 }
 
 type UpdateCmd struct {
@@ -20,6 +21,10 @@ type UpdateCmd struct {
 }
 
 type ValidateCmd struct{}
+
+type UninstallCmd struct {
+	Yes bool `help:"Do not ask for confirmation."`
+}
 
 func (c *CLI) Run() error {
 	return nil
