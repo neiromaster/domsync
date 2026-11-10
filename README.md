@@ -153,7 +153,7 @@ Within each section, patterns are sorted; section order is otherwise preserved; 
 
 A missing local file is treated as an empty list, so the first run bootstraps the local snapshot from the provider file: every provider-only domain is adopted and written locally. An empty local file with an empty provider file is a no-op. A plan whose final list would be empty while the provider file is not is an error: domsync refuses to wipe the provider file.
 
-Concurrent runs are refused. A run holds an exclusive lock on `<config-path>.domsync.lock` next to the config file from the moment the configuration is loaded until every write and post-write command has finished, so a cron job and a manual run cannot interleave their reads and writes. One lock covers the whole config, so two different configs can run at the same time. The lock file stays on disk after the run; the lock itself is released by the operating system when the process exits, including after a crash.
+Concurrent runs are refused. A run holds an exclusive lock on a hidden `.<name>.lock` file next to the config, where `<name>` is the config file name without its extension, from the moment the configuration is loaded until every write and post-write command has finished, so a cron job and a manual run cannot interleave their reads and writes. For `domsync.yaml` that file is `.domsync.lock`; two configs with different file names get different locks and can run at the same time. The lock file stays on disk after the run; the lock itself is released by the operating system when the process exits, including after a crash.
 
 ### Provider file validation
 
@@ -289,7 +289,7 @@ Enter, or anything other than `y`, `yes`, `д` or `да`, cancels and exits with
 
 The install method is detected the same way as for updates. Homebrew and npm installs are removed through the package manager: domsync runs `brew uninstall --cask --zap domsync` or `npm uninstall -g @domsync/cli` itself and then removes the cache directory. The cask declares a `zap` stanza for that directory, so `brew uninstall --cask --zap domsync` is just as complete without this command. On Windows a running npm package cannot delete itself, so the command prints the npm command and exits 4; the same happens when `brew` or `npm` is not on `PATH`, except the cache directory is still removed.
 
-The empty `<config>.domsync.lock` beside a config is a run lock, not an install artifact; it goes away with the config.
+The empty hidden `.<name>.lock` beside a config (`.domsync.lock` for `domsync.yaml`) is a run lock, not an install artifact; it goes away with the config.
 
 With `--json` the output is the usual envelope, with `removed` listing the paths and `dry_run` set for `--dry-run`.
 

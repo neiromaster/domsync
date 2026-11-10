@@ -2,6 +2,8 @@ package app
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/gofrs/flock"
 )
@@ -11,7 +13,12 @@ type runLock struct {
 }
 
 func lockPath(configPath string) string {
-	return configPath + ".domsync.lock"
+	name := filepath.Base(configPath)
+	if ext := filepath.Ext(name); ext != "" && ext != name {
+		name = strings.TrimSuffix(name, ext)
+	}
+	name = strings.TrimLeft(name, ".")
+	return filepath.Join(filepath.Dir(configPath), "."+name+".lock")
 }
 
 func acquireRunLock(path string) (*runLock, error) {
