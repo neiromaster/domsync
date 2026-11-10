@@ -73,7 +73,9 @@ func runSync(ctx context.Context, cli CLI, stdout, stderr io.Writer) int {
 			rep = report.Failure(code, err)
 		} else {
 			rep.OK = false
-			rep.Error = &report.ErrorInfo{Code: code, Message: err.Error()}
+			if isRunLevel(err) {
+				rep.Error = &report.ErrorInfo{Code: code, Message: err.Error()}
+			}
 		}
 		if cli.JSON {
 			if encErr := report.JSON(stdout, rep); encErr != nil {

@@ -74,7 +74,7 @@ func Sync(ctx context.Context, opts SyncOptions, dial func(context.Context, conf
 		if logErr := appendLog(cfg, rep); logErr != nil {
 			rep.OK = false
 			if firstErr == nil {
-				firstErr = withCode(1, logErr)
+				firstErr = withCode(1, withRunLevel(logErr))
 			}
 			return rep, firstErr
 		}

@@ -28,3 +28,23 @@ func ExitCode(err error) int {
 	}
 	return 1
 }
+
+type runLevelError struct {
+	err error
+}
+
+func (e *runLevelError) Error() string { return e.err.Error() }
+
+func (e *runLevelError) Unwrap() error { return e.err }
+
+func withRunLevel(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &runLevelError{err: err}
+}
+
+func isRunLevel(err error) bool {
+	var target *runLevelError
+	return errors.As(err, &target)
+}
