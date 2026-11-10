@@ -101,13 +101,38 @@ servers:
 }
 
 func TestLoadRejectsVersionOne(t *testing.T) {
-	path := writeConfig(t, "version: 1\n")
+	path := writeConfig(t, `version: 1
+source:
+  domains: ./domains.txt
+target:
+  host: 192.168.0.1
+  path: /etc/openclash/rule_provider/pure_list.txt
+`)
 	_, err := Load(path)
 	if err == nil || !strings.Contains(err.Error(), "version must be 2") {
 		t.Fatalf("err = %v", err)
 	}
 	if !strings.Contains(err.Error(), "domsync.example.yaml") {
 		t.Fatalf("err = %v, want a pointer to domsync.example.yaml", err)
+	}
+}
+
+func TestLoadRejectsFutureVersionWithUnknownFields(t *testing.T) {
+	path := writeConfig(t, `version: 3
+servers: []
+retries: 5
+`)
+	_, err := Load(path)
+	if err == nil || !strings.Contains(err.Error(), "version must be 2") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestLoadRejectsMissingVersion(t *testing.T) {
+	path := writeConfig(t, "servers: []\n")
+	_, err := Load(path)
+	if err == nil || !strings.Contains(err.Error(), "version is missing") {
+		t.Fatalf("err = %v", err)
 	}
 }
 

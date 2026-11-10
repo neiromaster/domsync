@@ -19,6 +19,7 @@ import (
 )
 
 const (
+	configVersion        = 2
 	maxConfigSize        = 1 << 20
 	maxOtherSectionRunes = 64
 	maxServerNameLen     = 32
@@ -121,6 +122,9 @@ func Load(explicit string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := checkVersion(configPath, data); err != nil {
+		return nil, err
+	}
 	var cfg Config
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
@@ -162,6 +166,26 @@ func readConfig(configPath string) ([]byte, error) {
 		return nil, fmt.Errorf("config %s: larger than %d bytes", configPath, maxConfigSize)
 	}
 	return data, nil
+}
+
+func checkVersion(configPath string, data []byte) error {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	var header struct {
+		Version *int `yaml:"version"`
+	}
+	if err := decoder.Decode(&header); err != nil {
+		if errors.Is(err, io.EOF) {
+			return fmt.Errorf("config %s: file is empty", configPath)
+		}
+		return fmt.Errorf("config %s: %w", configPath, err)
+	}
+	if header.Version == nil {
+		return fmt.Errorf("config %s: version is missing; see domsync.example.yaml for the version %d format", configPath, configVersion)
+	}
+	if *header.Version != configVersion {
+		return fmt.Errorf("config %s: version must be %d, got %d; see domsync.example.yaml for the version %d format", configPath, configVersion, *header.Version, configVersion)
+	}
+	return nil
 }
 
 func (c *Config) applyDefaults() {
@@ -249,9 +273,6 @@ func expandPath(base, value string) (string, error) {
 }
 
 func (c *Config) validate() error {
-	if c.Version != 2 {
-		return fmt.Errorf("version must be 2, got %d; see domsync.example.yaml for the version 2 format", c.Version)
-	}
 	if err := c.validateShape(); err != nil {
 		return err
 	}
