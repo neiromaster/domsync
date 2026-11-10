@@ -21,7 +21,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	var cli CLI
 	parser, err := kong.New(&cli,
 		kong.Name("domsync"),
-		kong.Description("Sync a local domain list to an OpenClash rule-provider file."),
+		kong.Description("Sync local domain lists to rule-provider files on your servers."),
 		kong.Writers(stdout, stderr),
 		kong.NoDefaultHelp(),
 	)
