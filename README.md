@@ -32,6 +32,14 @@ go install github.com/neiromaster/domsync/cmd/domsync@latest
 
 `go install` places the binary in `$GOBIN` (or `$HOME/go/bin`). The toolchain version is pinned in `go.mod`.
 
+With mise, the `go` backend runs the same install and keeps the binary under mise's control:
+
+```sh
+mise use -g go:github.com/neiromaster/domsync/cmd/domsync@latest
+```
+
+Pin a release with `@1.3.3` instead of `@latest`; `mise upgrade go:github.com/neiromaster/domsync/cmd/domsync` moves it forward later.
+
 Install script (macOS and Linux):
 
 ```sh
