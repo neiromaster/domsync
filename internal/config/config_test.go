@@ -106,6 +106,9 @@ func TestLoadRejectsVersionOne(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "version must be 2") {
 		t.Fatalf("err = %v", err)
 	}
+	if !strings.Contains(err.Error(), "domsync.example.yaml") {
+		t.Fatalf("err = %v, want a pointer to domsync.example.yaml", err)
+	}
 }
 
 func TestLoadRejectsUnknownField(t *testing.T) {

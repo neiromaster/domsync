@@ -73,6 +73,7 @@ func Sync(ctx context.Context, opts SyncOptions, dial func(context.Context, conf
 	if !opts.DryRun {
 		if logErr := appendLog(cfg, rep); logErr != nil {
 			rep.OK = false
+			rep.Warnings = append(rep.Warnings, "не удалось записать журнал: "+logErr.Error())
 			if firstErr == nil {
 				firstErr = withCode(1, withRunLevel(logErr))
 			}

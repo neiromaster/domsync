@@ -49,9 +49,8 @@ func writeServer(w io.Writer, server ServerResult, dryRun bool) {
 func writeFileResult(w io.Writer, file FileResult, dryRun bool) {
 	routerChanged := file.Router != nil && file.Router.Changed
 	localChanged := file.Local != nil && file.Local.Changed
-	if !routerChanged && !localChanged {
-		fmt.Fprintf(w, "  %s → %s: без изменений\n", file.Source, file.Target)
-	} else {
+	switch {
+	case routerChanged || localChanged:
 		fmt.Fprintf(w, "  %s → %s\n", file.Source, file.Target)
 		if routerChanged {
 			writeFileDelta(w, "    ", "роутер", file.Router, false, dryRun)
@@ -59,6 +58,10 @@ func writeFileResult(w io.Writer, file FileResult, dryRun bool) {
 		if localChanged {
 			writeFileDelta(w, "    ", "локально", file.Local, true, dryRun)
 		}
+	case file.Error != nil:
+		fmt.Fprintf(w, "  %s → %s\n", file.Source, file.Target)
+	default:
+		fmt.Fprintf(w, "  %s → %s: без изменений\n", file.Source, file.Target)
 	}
 	if file.Error != nil {
 		fmt.Fprintf(w, "    ошибка: %s\n", file.Error.Message)

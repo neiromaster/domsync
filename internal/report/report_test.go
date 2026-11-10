@@ -374,6 +374,24 @@ func TestHumanPartialError(t *testing.T) {
 	}
 }
 
+func TestHumanFailedPairPrintsNoChangesLine(t *testing.T) {
+	var buf bytes.Buffer
+	Human(&buf, &Report{
+		OK: false,
+		Servers: []ServerResult{{
+			Name: "router", Host: "192.168.1.1", OK: false,
+			Files: []FileResult{{
+				Source: "/l", Target: "/r", OK: false,
+				Error: &ErrorInfo{Code: 2, Message: "bad domain"},
+			}},
+		}},
+	})
+	want := "router (192.168.1.1)\n  /l → /r\n    ошибка: bad domain\n"
+	if buf.String() != want {
+		t.Fatalf("output = %q, want %q", buf.String(), want)
+	}
+}
+
 func TestHumanServerError(t *testing.T) {
 	var buf bytes.Buffer
 	Human(&buf, &Report{

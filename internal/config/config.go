@@ -250,7 +250,7 @@ func expandPath(base, value string) (string, error) {
 
 func (c *Config) validate() error {
 	if c.Version != 2 {
-		return fmt.Errorf("version must be 2, got %d", c.Version)
+		return fmt.Errorf("version must be 2, got %d; see domsync.example.yaml for the version 2 format", c.Version)
 	}
 	if err := c.validateShape(); err != nil {
 		return err

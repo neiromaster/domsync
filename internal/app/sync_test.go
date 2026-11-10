@@ -274,6 +274,26 @@ func TestSyncLogsFailuresAndKeepsTheFirstExitCode(t *testing.T) {
 	}
 }
 
+func TestSyncLogFailureWarnsAlongsidePairFailure(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath, f := setupOne(t, "not a valid line\n", "")
+	logDir := filepath.Join(dir, "logs")
+	if err := os.Mkdir(logDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	withLogging(t, cfgPath, logDir)
+	rep, err := Sync(context.Background(), SyncOptions{ConfigPath: cfgPath}, func(context.Context, config.Server) (Runner, error) { return f, nil })
+	if err == nil || ExitCode(err) != 2 {
+		t.Fatalf("error = %v (code %d)", err, ExitCode(err))
+	}
+	if rep.OK {
+		t.Fatalf("report OK = true: %+v", rep)
+	}
+	if len(rep.Warnings) != 1 || !strings.Contains(rep.Warnings[0], "не удалось записать журнал") {
+		t.Fatalf("warnings = %v", rep.Warnings)
+	}
+}
+
 func TestSyncCommandFailure(t *testing.T) {
 	cfgPath, f := setupOne(t, "[media]\n+.a.com\n", "")
 	f.cmdErr = errors.New("exit 1")
