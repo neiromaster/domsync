@@ -5,167 +5,170 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
-func writeMinimal(t *testing.T, dir string) (configPath, keyPath, khPath string) {
+func writeConfig(t *testing.T, body string) string {
 	t.Helper()
-	keyPath = filepath.Join(dir, "id_ed25519")
-	khPath = filepath.Join(dir, "known_hosts")
-	for _, p := range []string{keyPath, khPath} {
-		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+	dir := t.TempDir()
+	for _, name := range []string{"key", "known_hosts", "domains.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	configPath = filepath.Join(dir, "domsync.yaml")
-	body := "version: 1\ntarget:\n  host: 192.0.2.1\n  user: root\n  ssh_key: ./id_ed25519\n  known_hosts: ./known_hosts\n  path: /etc/openclash/rule_provider/x.txt\n"
-	if err := os.WriteFile(configPath, []byte(body), 0o600); err != nil {
+	path := filepath.Join(dir, "domsync.yaml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return
+	return path
 }
 
-func TestLoadDefaultsAndPaths(t *testing.T) {
-	dir := t.TempDir()
-	configPath, keyPath, khPath := writeMinimal(t, dir)
-	cfg, err := Load(configPath)
+func TestLoadServerAndPairDefaults(t *testing.T) {
+	path := writeConfig(t, `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /etc/openclash/rule_provider/media.txt
+`)
+	cfg, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Source.Domains != filepath.Join(dir, "domains.txt") {
-		t.Fatalf("domains = %q", cfg.Source.Domains)
+	srv := cfg.Servers[0]
+	if !srv.IsEnabled() || srv.Port != 22 || srv.PostWrite.Run != "on_change" {
+		t.Fatalf("server defaults = %+v", srv)
 	}
-	if cfg.Target.Port != 22 || cfg.Target.OtherSection != "other" || cfg.Target.Mode != "0644" {
-		t.Fatalf("defaults = %+v", cfg.Target)
+	if got := time.Duration(srv.PostWrite.Timeout); got != 120*time.Second {
+		t.Fatalf("timeout = %s", got)
 	}
-	if !cfg.Target.BackupEnabled() || !cfg.Update.CheckEnabled() {
-		t.Fatal("backup and update check must default to true")
+	pair := srv.Files[0]
+	if pair.OtherSection != "other" || pair.Mode != "0644" || pair.BackupSuffix != ".domsync.bak" {
+		t.Fatalf("pair defaults = %+v", pair)
 	}
-	if cfg.Target.SSHKey != keyPath || cfg.Target.KnownHosts != khPath {
-		t.Fatalf("paths not resolved: %q %q", cfg.Target.SSHKey, cfg.Target.KnownHosts)
+	if !pair.BackupEnabled() || pair.FileMode() != 0o644 {
+		t.Fatalf("pair helpers = %v %v", pair.BackupEnabled(), pair.FileMode())
 	}
-	if cfg.Target.FileMode() != 0o644 {
-		t.Fatalf("mode = %o", cfg.Target.FileMode())
+	if pair.Source != filepath.Join(filepath.Dir(path), "domains.txt") {
+		t.Fatalf("source = %q", pair.Source)
+	}
+	if srv.KnownHosts != filepath.Join(filepath.Dir(path), "known_hosts") {
+		t.Fatalf("known_hosts = %q", srv.KnownHosts)
+	}
+}
+
+func TestLoadMultipleServersKeepOrder(t *testing.T) {
+	path := writeConfig(t, `version: 2
+servers:
+  - name: router
+    host: a
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+  - name: vps-1
+    enabled: false
+    host: b
+    user: u
+    ssh_key: ./missing-key
+    files:
+      - source: ./other.txt
+        target: /b.txt
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Servers) != 2 || cfg.Servers[0].Name != "router" || cfg.Servers[1].Name != "vps-1" {
+		t.Fatalf("servers = %+v", cfg.Servers)
+	}
+	if cfg.Servers[1].IsEnabled() {
+		t.Fatal("vps-1 should be disabled")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Servers[1].KnownHosts != filepath.Join(home, ".ssh", "known_hosts") {
+		t.Fatalf("known_hosts default = %q", cfg.Servers[1].KnownHosts)
+	}
+}
+
+func TestLoadRejectsVersionOne(t *testing.T) {
+	path := writeConfig(t, "version: 1\n")
+	_, err := Load(path)
+	if err == nil || !strings.Contains(err.Error(), "version must be 2") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
 func TestLoadRejectsUnknownField(t *testing.T) {
-	dir := t.TempDir()
-	_, _, _ = writeMinimal(t, dir)
-	path := filepath.Join(dir, "domsync.yaml")
-	body, _ := os.ReadFile(path)
-	body = append(body, []byte("nonsense: true\n")...)
-	if err := os.WriteFile(path, body, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	path := writeConfig(t, `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+nonsense: true
+`)
 	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "nonsense") {
 		t.Fatalf("error = %v", err)
 	}
 }
 
-func TestLoadRejectsBadValues(t *testing.T) {
-	cases := []string{
-		"version: 2\n",
-		"version: 1\ntarget:\n  host: \"\"\n  user: root\n  path: /x\n",
-		"version: 1\ntarget:\n  host: h\n  user: root\n  path: relative/x\n",
-		"version: 1\ntarget:\n  host: h\n  user: root\n  path: /x\n  mode: \"999\"\n",
-		"version: 1\ntarget:\n  host: h\n  user: root\n  path: /x\n  post_write:\n    run: sometimes\n",
-	}
-	for _, body := range cases {
-		dir := t.TempDir()
-		path := filepath.Join(dir, "domsync.yaml")
-		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		t.Setenv("SSH_AUTH_SOCK", "/tmp/agent.sock")
-		if _, err := Load(path); err == nil {
-			t.Errorf("config %q loaded, want error", body)
-		}
-	}
-}
-
-func TestLoadOtherSectionValidation(t *testing.T) {
-	cases := []struct {
-		name    string
-		value   string
-		wantErr bool
-	}{
-		{"closing bracket", `"oth]er"`, true},
-		{"opening bracket", `"a[b"`, true},
-		{"newline", `"a\nb"`, true},
-		{"too long", strings.Repeat("a", 65), true},
-		{"valid", "misc", false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			configPath, _, _ := writeMinimal(t, dir)
-			body, err := os.ReadFile(configPath)
-			if err != nil {
-				t.Fatal(err)
-			}
-			body = append(body, []byte("  other_section: "+tc.value+"\n")...)
-			if err := os.WriteFile(configPath, body, 0o600); err != nil {
-				t.Fatal(err)
-			}
-			_, err = Load(configPath)
-			if tc.wantErr && (err == nil || !strings.Contains(err.Error(), "target.other_section")) {
-				t.Fatalf("error = %v, want a target.other_section error", err)
-			}
-			if !tc.wantErr && err != nil {
-				t.Fatalf("error = %v, want none", err)
-			}
-		})
-	}
-}
-
-func TestLoadRejectsZeroMode(t *testing.T) {
-	dir := t.TempDir()
-	configPath, _, _ := writeMinimal(t, dir)
-	body, err := os.ReadFile(configPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body = append(body, []byte("  mode: \"0000\"\n")...)
-	if err := os.WriteFile(configPath, body, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	_, err = Load(configPath)
-	if err == nil || !strings.Contains(err.Error(), "target.mode") {
-		t.Fatalf("error = %v, want a target.mode error", err)
-	}
-}
-
 func TestLoadDuration(t *testing.T) {
-	dir := t.TempDir()
-	configPath, _, _ := writeMinimal(t, dir)
-	body, _ := os.ReadFile(configPath)
-	body = []byte(strings.Replace(string(body), "\n  path:", "\n  post_write:\n    timeout: 90s\n  path:", 1))
-	if err := os.WriteFile(configPath, body, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := Load(configPath)
+	path := writeConfig(t, `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    post_write:
+      timeout: 90s
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+`)
+	cfg, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Target.PostWrite.Timeout != 90*1e9 {
-		t.Fatalf("timeout = %v", cfg.Target.PostWrite.Timeout)
+	if got := time.Duration(cfg.Servers[0].PostWrite.Timeout); got != 90*time.Second {
+		t.Fatalf("timeout = %v", got)
 	}
 }
 
 func TestLoadDurationErrorNamesLineAndValue(t *testing.T) {
-	dir := t.TempDir()
-	configPath, _, _ := writeMinimal(t, dir)
-	body, _ := os.ReadFile(configPath)
-	body = []byte(strings.Replace(string(body), "\n  path:", "\n  post_write:\n    timeout: abc\n  path:", 1))
-	if err := os.WriteFile(configPath, body, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	_, err := Load(configPath)
+	path := writeConfig(t, `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    post_write:
+      timeout: abc
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+`)
+	_, err := Load(path)
 	if err == nil {
 		t.Fatal("expected a duration error")
 	}
 	message := err.Error()
-	if !strings.Contains(message, "line 8") {
+	if !strings.Contains(message, "line 9") {
 		t.Fatalf("error does not name the line: %v", err)
 	}
 	if !strings.Contains(message, `"abc"`) {
@@ -173,44 +176,559 @@ func TestLoadDurationErrorNamesLineAndValue(t *testing.T) {
 	}
 }
 
-func TestLoadAgentModeRequiresKnownHosts(t *testing.T) {
-	dir := t.TempDir()
-	home := filepath.Join(dir, "home")
-	if err := os.Mkdir(home, 0o700); err != nil {
-		t.Fatal(err)
+func TestLoadShapeValidation(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "no servers",
+			body: "version: 2\n",
+			want: "servers must not be empty",
+		},
+		{
+			name: "missing name",
+			body: `version: 2
+servers:
+  - host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+`,
+			want: "servers[0].name must not be empty",
+		},
+		{
+			name: "invalid name",
+			body: `version: 2
+servers:
+  - name: Router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+`,
+			want: `servers[0] (Router).name must match [a-z0-9][a-z0-9_-]*`,
+		},
+		{
+			name: "name too long",
+			body: `version: 2
+servers:
+  - name: ` + strings.Repeat("a", 33) + `
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+`,
+			want: "servers[0] (" + strings.Repeat("a", 33) + ").name must be at most 32 characters",
+		},
+		{
+			name: "duplicate name",
+			body: `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./key
+        target: /b.txt
+`,
+			want: `servers[1] (router).name "router" is already used by servers[0] (router)`,
+		},
+		{
+			name: "missing host",
+			body: `version: 2
+servers:
+  - name: router
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+`,
+			want: "servers[0] (router).host must not be empty",
+		},
+		{
+			name: "missing user",
+			body: `version: 2
+servers:
+  - name: router
+    host: h
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+`,
+			want: "servers[0] (router).user must not be empty",
+		},
+		{
+			name: "port out of range",
+			body: `version: 2
+servers:
+  - name: router
+    host: h
+    port: 70000
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+`,
+			want: "servers[0] (router).port must be between 1 and 65535, got 70000",
+		},
+		{
+			name: "invalid post_write.run",
+			body: `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    post_write:
+      run: sometimes
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+`,
+			want: "servers[0] (router).post_write.run must be one of on_change, always, never; got \"sometimes\"",
+		},
+		{
+			name: "negative timeout",
+			body: `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    post_write:
+      timeout: -1s
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+`,
+			want: "servers[0] (router).post_write.timeout must be positive, got -1s",
+		},
+		{
+			name: "no files",
+			body: `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files: []
+`,
+			want: "servers[0] (router).files must not be empty",
+		},
+		{
+			name: "disabled server without files",
+			body: `version: 2
+servers:
+  - name: router
+    enabled: false
+    host: h
+    user: u
+    ssh_key: ./missing-key
+    known_hosts: ./missing-known-hosts
+    files: []
+`,
+			want: "servers[0] (router).files must not be empty",
+		},
+		{
+			name: "empty source",
+			body: `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ""
+        target: /a.txt
+`,
+			want: "servers[0] (router).files[0].source must not be empty",
+		},
+		{
+			name: "relative target",
+			body: `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: relative/a.txt
+`,
+			want: `servers[0] (router).files[0].target must be absolute, got "relative/a.txt"`,
+		},
+		{
+			name: "target trailing slash",
+			body: `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt/
+`,
+			want: `servers[0] (router).files[0].target must not end with '/', got "/a.txt/"`,
+		},
+		{
+			name: "other_section bracket",
+			body: `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+        other_section: "a[b"
+`,
+			want: `servers[0] (router).files[0].other_section must not contain '[' or ']', got "a[b"`,
+		},
+		{
+			name: "other_section control character",
+			body: `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+        other_section: "a\nb"
+`,
+			want: "servers[0] (router).files[0].other_section must not contain control characters",
+		},
+		{
+			name: "other_section too long",
+			body: `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+        other_section: ` + strings.Repeat("a", 65) + `
+`,
+			want: "servers[0] (router).files[0].other_section must be at most 64 runes, got 65",
+		},
+		{
+			name: "zero mode",
+			body: `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+        mode: "0000"
+`,
+			want: `servers[0] (router).files[0].mode must be octal between 0001 and 0777, got "0000"`,
+		},
+		{
+			name: "invalid mode",
+			body: `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+        mode: "999"
+`,
+			want: `servers[0] (router).files[0].mode must be octal between 0001 and 0777, got "999"`,
+		},
+		{
+			name: "duplicate source",
+			body: `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+      - source: ./domains.txt
+        target: /b.txt
+`,
+			want: "servers[0] (router).files[1].source",
+		},
+		{
+			name: "duplicate source across servers",
+			body: `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+  - name: vps-1
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /b.txt
+`,
+			want: "servers[1] (vps-1).files[0].source",
+		},
+		{
+			name: "duplicate target within server",
+			body: `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+      - source: ./key
+        target: /a.txt
+`,
+			want: "servers[0] (router).files[1].target",
+		},
 	}
-	t.Setenv("HOME", home)
-	t.Setenv("SSH_AUTH_SOCK", "/tmp/agent.sock")
-	path := filepath.Join(dir, "domsync.yaml")
-	body := "version: 1\ntarget:\n  host: h\n  user: root\n  path: /x\n"
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	_, err := Load(path)
-	if err == nil || !strings.Contains(err.Error(), "known_hosts") {
-		t.Fatalf("error = %v", err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeConfig(t, tc.body)
+			_, err := Load(path)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want substring %q", err, tc.want)
+			}
+		})
 	}
 }
 
-func TestLoadRejectsKnownHostsDirectory(t *testing.T) {
-	dir := t.TempDir()
-	configPath, _, khPath := writeMinimal(t, dir)
-	if err := os.Remove(khPath); err != nil {
+func TestLoadSameTargetOnDifferentServersIsAllowed(t *testing.T) {
+	path := writeConfig(t, `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /shared.txt
+  - name: vps-1
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./key
+        target: /shared.txt
+`)
+	if _, err := Load(path); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(khPath, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	_, err := Load(configPath)
-	if err == nil || !strings.Contains(err.Error(), "known_hosts") {
-		t.Fatalf("error = %v", err)
-	}
+}
+
+func TestLoadFilesystemChecks(t *testing.T) {
+	t.Run("missing ssh key", func(t *testing.T) {
+		path := writeConfig(t, `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./missing-key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+`)
+		_, err := Load(path)
+		if err == nil || !strings.Contains(err.Error(), "servers[0] (router).ssh_key") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+	t.Run("agent mode requires SSH_AUTH_SOCK", func(t *testing.T) {
+		t.Setenv("SSH_AUTH_SOCK", "")
+		path := writeConfig(t, `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+`)
+		_, err := Load(path)
+		if err == nil || !strings.Contains(err.Error(), "SSH_AUTH_SOCK") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+	t.Run("agent mode allowed with SSH_AUTH_SOCK", func(t *testing.T) {
+		t.Setenv("SSH_AUTH_SOCK", "/tmp/agent.sock")
+		path := writeConfig(t, `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    known_hosts: ./known_hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+`)
+		if _, err := Load(path); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("missing known_hosts", func(t *testing.T) {
+		path := writeConfig(t, `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./missing-known-hosts
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+`)
+		_, err := Load(path)
+		if err == nil || !strings.Contains(err.Error(), "servers[0] (router).known_hosts") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+	t.Run("known_hosts is a directory", func(t *testing.T) {
+		path := writeConfig(t, `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./khdir
+    files:
+      - source: ./domains.txt
+        target: /a.txt
+`)
+		if err := os.Mkdir(filepath.Join(filepath.Dir(path), "khdir"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		_, err := Load(path)
+		if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+	t.Run("absent source is allowed", func(t *testing.T) {
+		path := writeConfig(t, `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./absent.txt
+        target: /a.txt
+`)
+		if _, err := Load(path); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("source is a directory", func(t *testing.T) {
+		path := writeConfig(t, `version: 2
+servers:
+  - name: router
+    host: h
+    user: u
+    ssh_key: ./key
+    known_hosts: ./known_hosts
+    files:
+      - source: ./sourcedir
+        target: /a.txt
+`)
+		if err := os.Mkdir(filepath.Join(filepath.Dir(path), "sourcedir"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		_, err := Load(path)
+		if err == nil || !strings.Contains(err.Error(), "servers[0] (router).files[0].source") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+	t.Run("disabled server skips filesystem checks", func(t *testing.T) {
+		path := writeConfig(t, `version: 2
+servers:
+  - name: router
+    enabled: false
+    host: h
+    user: u
+    ssh_key: ./missing-key
+    known_hosts: ./missing-known-hosts
+    files:
+      - source: ./missing-source.txt
+        target: /a.txt
+`)
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Servers[0].IsEnabled() {
+			t.Fatal("server must stay disabled")
+		}
+	})
 }
 
 func TestDiscoverOrder(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "custom.yaml")
-	if err := os.WriteFile(path, []byte("version: 1\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("version: 2\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := Discover(path); err != nil || got != path {
@@ -222,7 +740,7 @@ func TestDiscoverOrder(t *testing.T) {
 	}
 	t.Setenv("DOMSYNC_CONFIG", "")
 	t.Chdir(dir)
-	if err := os.WriteFile(filepath.Join(dir, "domsync.yaml"), []byte("version: 1\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "domsync.yaml"), []byte("version: 2\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := Discover(""); err != nil || got != filepath.Join(dir, "domsync.yaml") {

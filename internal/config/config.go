@@ -21,33 +21,36 @@ import (
 const (
 	maxConfigSize        = 1 << 20
 	maxOtherSectionRunes = 64
+	maxServerNameLen     = 32
 )
 
 type Config struct {
-	Version int     `yaml:"version"`
-	Source  Source  `yaml:"source"`
-	Target  Target  `yaml:"target"`
-	Update  Update  `yaml:"update"`
-	Logging Logging `yaml:"logging"`
+	Version int      `yaml:"version"`
+	Logging Logging  `yaml:"logging"`
+	Update  Update   `yaml:"update"`
+	Servers []Server `yaml:"servers"`
 	path    string
 }
 
-type Source struct {
-	Domains string `yaml:"domains"`
+type Server struct {
+	Name       string    `yaml:"name"`
+	Enabled    *bool     `yaml:"enabled"`
+	Host       string    `yaml:"host"`
+	Port       int       `yaml:"port"`
+	User       string    `yaml:"user"`
+	SSHKey     string    `yaml:"ssh_key"`
+	KnownHosts string    `yaml:"known_hosts"`
+	PostWrite  PostWrite `yaml:"post_write"`
+	Files      []Pair    `yaml:"files"`
 }
 
-type Target struct {
-	Host         string    `yaml:"host"`
-	Port         int       `yaml:"port"`
-	User         string    `yaml:"user"`
-	SSHKey       string    `yaml:"ssh_key"`
-	KnownHosts   string    `yaml:"known_hosts"`
-	Path         string    `yaml:"path"`
-	OtherSection string    `yaml:"other_section"`
-	Mode         string    `yaml:"mode"`
-	BackupSuffix string    `yaml:"backup_suffix"`
-	Backup       *bool     `yaml:"backup"`
-	PostWrite    PostWrite `yaml:"post_write"`
+type Pair struct {
+	Source       string `yaml:"source"`
+	Target       string `yaml:"target"`
+	OtherSection string `yaml:"other_section"`
+	Mode         string `yaml:"mode"`
+	Backup       *bool  `yaml:"backup"`
+	BackupSuffix string `yaml:"backup_suffix"`
 }
 
 type PostWrite struct {
@@ -66,15 +69,22 @@ type Logging struct {
 
 func (c *Config) Path() string { return c.path }
 
-func (t Target) BackupEnabled() bool {
-	if t.Backup == nil {
+func (s Server) IsEnabled() bool {
+	if s.Enabled == nil {
 		return true
 	}
-	return *t.Backup
+	return *s.Enabled
 }
 
-func (t Target) FileMode() fs.FileMode {
-	parsed, err := strconv.ParseUint(t.Mode, 8, 32)
+func (p Pair) BackupEnabled() bool {
+	if p.Backup == nil {
+		return true
+	}
+	return *p.Backup
+}
+
+func (p Pair) FileMode() fs.FileMode {
+	parsed, err := strconv.ParseUint(p.Mode, 8, 32)
 	if err != nil {
 		return 0
 	}
@@ -155,49 +165,66 @@ func readConfig(configPath string) ([]byte, error) {
 }
 
 func (c *Config) applyDefaults() {
-	if c.Source.Domains == "" {
-		c.Source.Domains = "domains.txt"
-	}
-	if c.Target.Port == 0 {
-		c.Target.Port = 22
-	}
-	if c.Target.KnownHosts == "" {
-		c.Target.KnownHosts = "~/.ssh/known_hosts"
-	}
-	if c.Target.OtherSection == "" {
-		c.Target.OtherSection = "other"
-	}
-	if c.Target.Mode == "" {
-		c.Target.Mode = "0644"
-	}
-	if c.Target.BackupSuffix == "" {
-		c.Target.BackupSuffix = ".domsync.bak"
-	}
-	if c.Target.PostWrite.Run == "" {
-		c.Target.PostWrite.Run = "on_change"
-	}
-	if c.Target.PostWrite.Timeout == 0 {
-		c.Target.PostWrite.Timeout = Duration(120 * time.Second)
+	for i := range c.Servers {
+		server := &c.Servers[i]
+		if server.Port == 0 {
+			server.Port = 22
+		}
+		if server.KnownHosts == "" {
+			server.KnownHosts = "~/.ssh/known_hosts"
+		}
+		if server.PostWrite.Run == "" {
+			server.PostWrite.Run = "on_change"
+		}
+		if server.PostWrite.Timeout == 0 {
+			server.PostWrite.Timeout = Duration(120 * time.Second)
+		}
+		for j := range server.Files {
+			pair := &server.Files[j]
+			if pair.OtherSection == "" {
+				pair.OtherSection = "other"
+			}
+			if pair.Mode == "" {
+				pair.Mode = "0644"
+			}
+			if pair.BackupSuffix == "" {
+				pair.BackupSuffix = ".domsync.bak"
+			}
+		}
 	}
 }
 
 func (c *Config) resolvePaths() error {
 	base := filepath.Dir(c.path)
-	for _, field := range []struct {
-		name  string
-		value *string
-	}{
-		{"source.domains", &c.Source.Domains},
-		{"target.ssh_key", &c.Target.SSHKey},
-		{"target.known_hosts", &c.Target.KnownHosts},
-		{"logging.file", &c.Logging.File},
-	} {
-		resolved, err := expandPath(base, *field.value)
-		if err != nil {
-			return fmt.Errorf("%s: %w", field.name, err)
+	for i := range c.Servers {
+		server := &c.Servers[i]
+		label := serverLabel(i, *server)
+		for _, field := range []struct {
+			name  string
+			value *string
+		}{
+			{"ssh_key", &server.SSHKey},
+			{"known_hosts", &server.KnownHosts},
+		} {
+			resolved, err := expandPath(base, *field.value)
+			if err != nil {
+				return fmt.Errorf("%s.%s: %w", label, field.name, err)
+			}
+			*field.value = resolved
 		}
-		*field.value = resolved
+		for j := range server.Files {
+			resolved, err := expandPath(base, server.Files[j].Source)
+			if err != nil {
+				return fmt.Errorf("%s.files[%d].source: %w", label, j, err)
+			}
+			server.Files[j].Source = resolved
+		}
 	}
+	resolved, err := expandPath(base, c.Logging.File)
+	if err != nil {
+		return fmt.Errorf("logging.file: %w", err)
+	}
+	c.Logging.File = resolved
 	return nil
 }
 
@@ -222,62 +249,169 @@ func expandPath(base, value string) (string, error) {
 }
 
 func (c *Config) validate() error {
-	if c.Version != 1 {
-		return fmt.Errorf("version must be 1, got %d", c.Version)
+	if c.Version != 2 {
+		return fmt.Errorf("version must be 2, got %d", c.Version)
 	}
-	if c.Target.Host == "" {
-		return errors.New("target.host must not be empty")
+	if err := c.validateShape(); err != nil {
+		return err
 	}
-	if c.Target.User == "" {
-		return errors.New("target.user must not be empty")
+	return c.validateFilesystem()
+}
+
+func (c *Config) validateShape() error {
+	if len(c.Servers) == 0 {
+		return errors.New("servers must not be empty")
 	}
-	if c.Target.Port < 1 || c.Target.Port > 65535 {
-		return fmt.Errorf("target.port must be between 1 and 65535, got %d", c.Target.Port)
-	}
-	if !path.IsAbs(c.Target.Path) {
-		return fmt.Errorf("target.path must be absolute, got %q", c.Target.Path)
-	}
-	if strings.HasSuffix(c.Target.Path, "/") {
-		return fmt.Errorf("target.path must not end with '/', got %q", c.Target.Path)
-	}
-	if c.Target.OtherSection == "" {
-		return errors.New("target.other_section must not be empty")
-	}
-	if strings.ContainsAny(c.Target.OtherSection, "[]") {
-		return fmt.Errorf("target.other_section must not contain '[' or ']', got %q", c.Target.OtherSection)
-	}
-	if utf8.RuneCountInString(c.Target.OtherSection) > maxOtherSectionRunes {
-		return fmt.Errorf("target.other_section must be at most %d runes, got %d", maxOtherSectionRunes, utf8.RuneCountInString(c.Target.OtherSection))
-	}
-	for _, r := range c.Target.OtherSection {
-		if unicode.IsControl(r) {
-			return fmt.Errorf("target.other_section must not contain control characters, got %q", c.Target.OtherSection)
+	names := make(map[string]string, len(c.Servers))
+	sources := make(map[string]string)
+	for i := range c.Servers {
+		server := &c.Servers[i]
+		label := serverLabel(i, *server)
+		if server.Name == "" {
+			return fmt.Errorf("%s.name must not be empty", label)
+		}
+		if len(server.Name) > maxServerNameLen {
+			return fmt.Errorf("%s.name must be at most %d characters, got %d", label, maxServerNameLen, len(server.Name))
+		}
+		if !validServerName(server.Name) {
+			return fmt.Errorf("%s.name must match [a-z0-9][a-z0-9_-]*, got %q", label, server.Name)
+		}
+		if previous, ok := names[server.Name]; ok {
+			return fmt.Errorf("%s.name %q is already used by %s", label, server.Name, previous)
+		}
+		names[server.Name] = label
+		if server.Host == "" {
+			return fmt.Errorf("%s.host must not be empty", label)
+		}
+		if server.User == "" {
+			return fmt.Errorf("%s.user must not be empty", label)
+		}
+		if server.Port < 1 || server.Port > 65535 {
+			return fmt.Errorf("%s.port must be between 1 and 65535, got %d", label, server.Port)
+		}
+		switch server.PostWrite.Run {
+		case "on_change", "always", "never":
+		default:
+			return fmt.Errorf("%s.post_write.run must be one of on_change, always, never; got %q", label, server.PostWrite.Run)
+		}
+		if server.PostWrite.Timeout <= 0 {
+			return fmt.Errorf("%s.post_write.timeout must be positive, got %s", label, time.Duration(server.PostWrite.Timeout))
+		}
+		if len(server.Files) == 0 {
+			return fmt.Errorf("%s.files must not be empty", label)
+		}
+		targets := make(map[string]string, len(server.Files))
+		for j := range server.Files {
+			pairLabel := fmt.Sprintf("%s.files[%d]", label, j)
+			if err := validatePair(pairLabel, server.Files[j]); err != nil {
+				return err
+			}
+			pair := server.Files[j]
+			if previous, ok := sources[pair.Source]; ok {
+				return fmt.Errorf("%s.source %q is already used by %s", pairLabel, pair.Source, previous)
+			}
+			sources[pair.Source] = pairLabel + ".source"
+			if previous, ok := targets[pair.Target]; ok {
+				return fmt.Errorf("%s.target %q is already used by %s", pairLabel, pair.Target, previous)
+			}
+			targets[pair.Target] = pairLabel + ".target"
 		}
 	}
-	mode, err := strconv.ParseUint(c.Target.Mode, 8, 32)
+	return nil
+}
+
+func validatePair(label string, pair Pair) error {
+	if pair.Source == "" {
+		return fmt.Errorf("%s.source must not be empty", label)
+	}
+	if !path.IsAbs(pair.Target) {
+		return fmt.Errorf("%s.target must be absolute, got %q", label, pair.Target)
+	}
+	if strings.HasSuffix(pair.Target, "/") {
+		return fmt.Errorf("%s.target must not end with '/', got %q", label, pair.Target)
+	}
+	if pair.OtherSection == "" {
+		return fmt.Errorf("%s.other_section must not be empty", label)
+	}
+	if strings.ContainsAny(pair.OtherSection, "[]") {
+		return fmt.Errorf("%s.other_section must not contain '[' or ']', got %q", label, pair.OtherSection)
+	}
+	if utf8.RuneCountInString(pair.OtherSection) > maxOtherSectionRunes {
+		return fmt.Errorf("%s.other_section must be at most %d runes, got %d", label, maxOtherSectionRunes, utf8.RuneCountInString(pair.OtherSection))
+	}
+	for _, r := range pair.OtherSection {
+		if unicode.IsControl(r) {
+			return fmt.Errorf("%s.other_section must not contain control characters, got %q", label, pair.OtherSection)
+		}
+	}
+	mode, err := strconv.ParseUint(pair.Mode, 8, 32)
 	if err != nil || mode == 0 || mode > 0o777 {
-		return fmt.Errorf("target.mode must be octal between 0001 and 0777, got %q", c.Target.Mode)
+		return fmt.Errorf("%s.mode must be octal between 0001 and 0777, got %q", label, pair.Mode)
 	}
-	switch c.Target.PostWrite.Run {
-	case "on_change", "always", "never":
-	default:
-		return fmt.Errorf("target.post_write.run must be one of on_change, always, never; got %q", c.Target.PostWrite.Run)
-	}
-	if c.Target.PostWrite.Timeout <= 0 {
-		return fmt.Errorf("target.post_write.timeout must be positive, got %s", time.Duration(c.Target.PostWrite.Timeout))
-	}
-	if c.Target.SSHKey != "" {
-		if err := requireRegularFile("target.ssh_key", c.Target.SSHKey); err != nil {
+	return nil
+}
+
+func (c *Config) validateFilesystem() error {
+	for i := range c.Servers {
+		server := &c.Servers[i]
+		if !server.IsEnabled() {
+			continue
+		}
+		label := serverLabel(i, *server)
+		if server.SSHKey != "" {
+			if err := requireRegularFile(label+".ssh_key", server.SSHKey); err != nil {
+				return err
+			}
+		} else if os.Getenv("SSH_AUTH_SOCK") == "" {
+			return fmt.Errorf("%s.ssh_key is empty and SSH_AUTH_SOCK is not set", label)
+		}
+		if err := requireRegularFile(label+".known_hosts", server.KnownHosts); err != nil {
 			return err
 		}
-	} else if os.Getenv("SSH_AUTH_SOCK") == "" {
-		return errors.New("target.ssh_key is empty and SSH_AUTH_SOCK is not set")
+		for j := range server.Files {
+			if err := requireRegularFileOrAbsent(fmt.Sprintf("%s.files[%d].source", label, j), server.Files[j].Source); err != nil {
+				return err
+			}
+		}
 	}
-	return requireRegularFile("target.known_hosts", c.Target.KnownHosts)
+	return nil
+}
+
+func serverLabel(index int, server Server) string {
+	if server.Name == "" {
+		return fmt.Sprintf("servers[%d]", index)
+	}
+	return fmt.Sprintf("servers[%d] (%s)", index, server.Name)
+}
+
+func validServerName(name string) bool {
+	for i, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+		case (r == '-' || r == '_') && i > 0:
+		default:
+			return false
+		}
+	}
+	return name != ""
 }
 
 func requireRegularFile(key, name string) error {
 	info, err := os.Stat(name)
+	if err != nil {
+		return fmt.Errorf("%s %q: %w", key, name, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%s %q is not a regular file", key, name)
+	}
+	return nil
+}
+
+func requireRegularFileOrAbsent(key, name string) error {
+	info, err := os.Stat(name)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("%s %q: %w", key, name, err)
 	}
