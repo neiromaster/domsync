@@ -170,7 +170,7 @@ Top-level keys:
 | `version` | integer | required | Must be `2`; a `version: 1` config is rejected. |
 | `servers` | list | required | One or more servers; at least one entry. |
 | `update.check` | boolean | `true` | Check GitHub for a newer release at launch. `--no-update-check` overrides it. |
-| `logging.file` | path | empty (disabled) | When set, one summary line is appended on a completed run (and when a post-write command fails). |
+| `logging.file` | path | empty (disabled) | When set, one summary line is appended on every non-dry-run run that reaches the end, including runs with failed pairs or servers. |
 
 Server keys:
 
@@ -204,7 +204,7 @@ Two pairs may not share a `source` (resolved absolute path): both would rewrite 
 `post_write.run` values:
 
 - `on_change` - run the commands when at least one pair on this server changed something, on the server or locally.
-- `always` - run them after every successful sync of the server, including a run with no changes at all.
+- `always` - run them after every non-dry-run sync of the server, including a run with no changes and a run in which a pair failed.
 - `never` - never run them.
 
 `--dry-run` never runs commands, and a server whose connection failed runs none. A command failure is recorded and does not undo any write; the sequence stops at the first failing command.
@@ -243,7 +243,7 @@ With `--json` the output is one object with `ok` and `servers`; each server carr
 | `4` | Update error, including the Homebrew/npm refusal. |
 | `5` | A post-write command failed (non-zero exit or transport error). |
 
-When several things fail, the exit code is the code of the first failure in execution order: server order, then file order. A server that cannot be dialled counts at its own position, before its pairs, so a connection error beats a later pair failure on that server. A failure in one pair or one server never stops the rest.
+When several things fail, the exit code is the code of the first failure in execution order: server order, then file order. A server that cannot be dialled counts at its own position, before its pairs, so a connection error beats a later pair failure. A failure in one pair or one server never stops the rest.
 
 `--strict` only promotes local warnings (deletion target not found, redundant `+`/`-` in one section) to errors, and fails only that pair. Problems in a provider file are always errors, and a failed launch-time update check never changes the sync exit code.
 
