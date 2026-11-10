@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Only the latest release receives security fixes. Upgrade with `brew upgrade --cask domsync`, `npm i -g @domsync/cli@latest`, or `domsync update` before reporting an issue that may already be fixed.
+Only the latest release receives security fixes. Upgrade with `brew upgrade --cask domsync`, `npm i -g @domsync/domsync@latest`, or `domsync update` before reporting an issue that may already be fixed.
 
 ## Reporting a vulnerability
 

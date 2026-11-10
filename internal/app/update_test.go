@@ -54,7 +54,7 @@ func TestRunUpdateRefusesBrewAndNPM(t *testing.T) {
 	out.Reset()
 	errOut.Reset()
 	code = runUpdate(t.Context(), CLI{Update: &UpdateCmd{}}, &out, &errOut)
-	if code != 4 || !strings.Contains(errOut.String(), "npm i -g @domsync/cli@latest") {
+	if code != 4 || !strings.Contains(errOut.String(), "npm i -g @domsync/domsync@latest") {
 		t.Fatalf("code=%d err=%q", code, errOut.String())
 	}
 }
