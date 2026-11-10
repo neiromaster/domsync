@@ -38,7 +38,7 @@ With mise, the `go` backend runs the same install and keeps the binary under mis
 mise use -g go:github.com/neiromaster/domsync/cmd/domsync@latest
 ```
 
-Pin a release with `@1.3.3` instead of `@latest`; `mise upgrade go:github.com/neiromaster/domsync/cmd/domsync` moves it forward later.
+mise holds back releases younger than 24 hours (`minimum_release_age`, a supply-chain default), so `@latest` resolves to the newest release older than a day. To install the current release right away, pin it (`.../cmd/domsync@1.3.3`); `mise upgrade go:github.com/neiromaster/domsync/cmd/domsync` moves a tool forward later.
 
 Install script (macOS and Linux):
 
