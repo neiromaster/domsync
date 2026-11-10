@@ -57,6 +57,7 @@ for pair in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 wind
   [ -f "$pkg_dir/$bin" ]
 
   printf '{"name":"@domsync/%s","version":"%s"}\n' "$platform" "$VERSION" > "$pkg_dir/package.json"
+  printf '# @domsync/%s\n\nPlatform binary for [@domsync/cli](https://www.npmjs.com/package/@domsync/cli). Install the launcher package; it resolves this binary for %s-%s.\n' "$platform" "$os" "$cpu" > "$pkg_dir/README.md"
 
   (
     cd "$pkg_dir"
@@ -79,6 +80,7 @@ if npm view "@domsync/cli@$VERSION" version >/dev/null 2>&1; then
 else
   mkdir -p "$(dirname "$launcher_dir")"
   cp -R "$ROOT/npm/domsync" "$launcher_dir"
+  cp "$ROOT/README.md" "$launcher_dir/README.md"
   (
     cd "$launcher_dir"
     npm pkg set "version=$VERSION"
