@@ -16,12 +16,49 @@ func normalize(r *Report) *Report {
 	if clone.Warnings == nil {
 		clone.Warnings = []string{}
 	}
+	clone.Servers = normalizeServers(r.Servers)
+	return &clone
+}
+
+func normalizeServers(servers []ServerResult) []ServerResult {
+	if servers == nil {
+		return []ServerResult{}
+	}
+	clone := make([]ServerResult, len(servers))
+	for i, server := range servers {
+		clone[i] = normalizeServer(server)
+	}
+	return clone
+}
+
+func normalizeServer(server ServerResult) ServerResult {
+	clone := server
+	clone.Files = normalizeFiles(server.Files)
 	if clone.Commands == nil {
 		clone.Commands = []Command{}
 	}
-	clone.Router = normalizeDelta(r.Router)
-	clone.Local = normalizeDelta(r.Local)
-	return &clone
+	return clone
+}
+
+func normalizeFiles(files []FileResult) []FileResult {
+	if files == nil {
+		return []FileResult{}
+	}
+	clone := make([]FileResult, len(files))
+	for i, file := range files {
+		clone[i] = normalizeFile(file)
+	}
+	return clone
+}
+
+func normalizeFile(file FileResult) FileResult {
+	clone := file
+	clone.Router = normalizeDelta(file.Router)
+	clone.Local = normalizeDelta(file.Local)
+	if clone.Warnings == nil {
+		clone.Warnings = []string{}
+	}
+	return clone
 }
 
 func normalizeDelta(delta *FileDelta) *FileDelta {

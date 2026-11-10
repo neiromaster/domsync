@@ -21,7 +21,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	var cli CLI
 	parser, err := kong.New(&cli,
 		kong.Name("domsync"),
-		kong.Description("Sync a local domain list to an OpenClash rule-provider file."),
+		kong.Description("Sync local domain lists to rule-provider files on your servers."),
 		kong.Writers(stdout, stderr),
 		kong.NoDefaultHelp(),
 	)
@@ -73,7 +73,9 @@ func runSync(ctx context.Context, cli CLI, stdout, stderr io.Writer) int {
 			rep = report.Failure(code, err)
 		} else {
 			rep.OK = false
-			rep.Error = &report.ErrorInfo{Code: code, Message: err.Error()}
+			if isRunLevel(err) {
+				rep.Error = &report.ErrorInfo{Code: code, Message: err.Error()}
+			}
 		}
 		if cli.JSON {
 			if encErr := report.JSON(stdout, rep); encErr != nil {
@@ -102,13 +104,13 @@ func runSync(ctx context.Context, cli CLI, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func dialConfig(ctx context.Context, cfg config.Config) (Runner, error) {
+func dialConfig(ctx context.Context, srv config.Server) (Runner, error) {
 	return sshclient.Dial(ctx, sshclient.Options{
-		Host:       cfg.Target.Host,
-		Port:       cfg.Target.Port,
-		User:       cfg.Target.User,
-		KeyPath:    cfg.Target.SSHKey,
-		KnownHosts: cfg.Target.KnownHosts,
+		Host:       srv.Host,
+		Port:       srv.Port,
+		User:       srv.User,
+		KeyPath:    srv.SSHKey,
+		KnownHosts: srv.KnownHosts,
 		Passphrase: passphraseFromTerminal(),
 		Timeout:    10 * time.Second,
 	})

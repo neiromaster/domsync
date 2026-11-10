@@ -1,10 +1,10 @@
 # domsync
 
-`domsync` keeps a single domain list in sync between your laptop and an OpenClash rule-provider file on a router. It reads the local list and the provider file over SSH, merges them (the local entries win, router-only domains go into an `other` section), validates everything, then atomically rewrites each file that changed and optionally restarts OpenClash.
+`domsync` keeps local sectioned domain lists in sync with OpenClash/Mihomo rule-provider files on your servers. One config lists any number of servers, and each server lists any number of **pairs**: one local domain list and one provider file. For every pair `domsync` reads the local list and the provider file over SSH, merges them (the local entries win, provider-only domains go into an `other` section), validates everything, then atomically rewrites each file that changed and optionally runs per-server post-write commands.
 
-It never silently rewrites anything it cannot parse: an ambiguous local file or a malformed provider line stops the run before a single byte is written.
+Pairs are independent: a dead server or a broken pair is reported and the rest still run. It never silently rewrites anything it cannot parse: an ambiguous local file or a malformed provider line stops that pair before a single byte is written.
 
-**Not supported in v1:** homeproxy, subscription URLs or any remote source other than the current provider file, SSH password authentication, `ProxyJump`, a fallback to the system `ssh`, IDN domains (use punycode), and cryptographic verification of updates inside the CLI. There is no daemon, watcher or scheduler; run `domsync` from cron or by hand.
+**Not supported in v1:** homeproxy, subscription URLs or any remote source other than the current provider file, SSH password authentication, `ProxyJump`, a fallback to the system `ssh`, IDN domains (use punycode), and cryptographic verification of updates inside the CLI. One local list cannot be shared by two pairs (cross-sync), servers and pairs cannot be selected on the command line, and execution is sequential. There is no daemon, watcher or scheduler; run `domsync` from cron or by hand.
 
 ## Install
 
@@ -42,46 +42,48 @@ The script downloads the release archive and `checksums.txt`, verifies the SHA-2
 
 ```sh
 cp domsync.example.yaml domsync.yaml
-cat > domains.txt <<'EOF'
+mkdir -p domains
+cat > domains/media.txt <<'EOF'
 [media]
 +.example.com
 +.example.net
-
-[misc]
+EOF
+cat > domains/ai.txt <<'EOF'
+[ai]
 +.example.org
 EOF
 ```
 
-Edit `domsync.yaml` for your router (`target.host`, `target.user`, `target.ssh_key`, `target.path`), make sure the router's host key is already in `~/.ssh/known_hosts`, then run:
+Edit `domsync.yaml`: in the `router` server set `host`, `user`, `ssh_key` and the `target` of each file. The example also lists a second server, `vps-1`, to show the shape; delete that entry or fix its settings before running. Set `enabled: false` instead to park it. Make sure each server's host key is already in `known_hosts`, then run:
 
 ```sh
 domsync
 ```
 
-The config is looked up in this order: `--config <path>`, the `DOMSYNC_CONFIG` environment variable, then `./domsync.yaml` in the current directory. Relative paths inside the config (`source.domains`, `target.ssh_key`, `target.known_hosts`, `logging.file`) are resolved against the config file's directory; `~` and `~/...` are expanded to your home directory.
+The config is looked up in this order: `--config <path>`, the `DOMSYNC_CONFIG` environment variable, then `./domsync.yaml` in the current directory. Relative paths inside the config (`servers[].ssh_key`, `servers[].known_hosts`, `servers[].files[].source`, `logging.file`) are resolved against the config file's directory; `~` and `~/...` are expanded to your home directory.
 
-A first run needs the router's host key in `known_hosts`. If it is missing, the error includes the SHA-256 fingerprint and the exact `ssh-keyscan -H ... >> ~/.ssh/known_hosts` command to add it.
+A first run needs each server's host key in `known_hosts`. If it is missing, the error includes the SHA-256 fingerprint and the exact `ssh-keyscan -H ... >> ~/.ssh/known_hosts` command to add it.
 
 ## OpenClash provider
 
-Add this provider to the OpenClash configuration:
+Add one provider per synced file to the OpenClash configuration:
 
 ```yaml
 rule-providers:
-  domsync:
+  media:
     type: file
     behavior: domain
     format: text
-    path: ./rule_provider/domsync.txt
+    path: ./rule_provider/media.txt
 ```
 
 `format: text` is **mandatory**. Without it Mihomo parses the file as YAML, the provider ends up empty, and OpenClash gives no error.
 
-`target.path` in `domsync.yaml` is the absolute path of the same file; OpenClash keeps provider files under `/etc/openclash/rule_provider/`.
+Each pair's `target` in `domsync.yaml` is the absolute path of the same file; OpenClash keeps provider files under `/etc/openclash/rule_provider/`.
 
 `/etc/init.d/openclash reload` does **not** re-read provider files. Use `restart`, which is why the example config's post-write command is `/etc/init.d/openclash restart`. Any other command that genuinely reloads providers works too.
 
-In the provider file, `# [section]` lines are comments for humans only: Mihomo ignores lines starting with `#` or `//`. domsync writes section headers only in that commented form, because a bare `[media]` line would be accepted by Mihomo as a literal domain and silently inflate the rule count. Comments are never preserved from the router: the file is regenerated from the local state.
+In the provider file, `# [section]` lines are comments for humans only: Mihomo ignores lines starting with `#` or `//`. domsync writes section headers only in that commented form, because a bare `[media]` line would be accepted by Mihomo as a literal domain and silently inflate the rule count. Comments are never preserved from the server: the file is regenerated from the local state.
 
 ## Local file format
 
@@ -100,9 +102,9 @@ In the provider file, `# [section]` lines are comments for humans only: Mihomo i
 
 ### Sections
 
-A section header is `[name]` on its own line, optionally with surrounding whitespace. Names must be non-empty, at most 64 characters, free of control characters, and unique. Section order follows first appearance in the local file, but the `target.other_section` section (default `other`) is always rendered last. Empty sections are dropped, together with their comments.
+A section header is `[name]` on its own line, optionally with surrounding whitespace. Names must be non-empty, at most 64 characters, free of control characters, and unique. Section order follows first appearance in the local file, but the pair's `other_section` section (default `other`) is always rendered last. Empty sections are dropped, together with their comments.
 
-A file with no section headers is a flat list and stays flat; in that case no `other` section is ever created, even if router-only domains are adopted.
+A file with no section headers is a flat list and stays flat; in that case no `other` section is ever created, even if provider-only domains are adopted.
 
 ### Patterns
 
@@ -128,10 +130,10 @@ Rules enforced by the parser:
 
 A leading `-` is the only structural marker: `-` followed by any valid pattern is a deletion directive. A `+` or `*` inside the pattern is Mihomo syntax, not a sign.
 
-- `-pattern` with no positive entry for the same pattern **deletes** it from the router and from the local snapshot.
-- `-pattern` plus a positive entry for the same pattern in a **different** section **moves** it to that section. On the router only the section comment changes.
+- `-pattern` with no positive entry for the same pattern **deletes** it from the provider file and from the local snapshot.
+- `-pattern` plus a positive entry for the same pattern in a **different** section **moves** it to that section. On the server only the section comment changes.
 - `-pattern` and a positive entry in the **same** section is redundant: the positive entry wins and a warning is printed. With `--strict` it is an error.
-- A `-pattern` that exists neither locally nor on the router produces a warning; `--strict` turns it into an error.
+- A `-pattern` that exists neither locally nor in the provider file produces a warning; `--strict` turns it into an error.
 
 To delete a domain that still has a positive line, remove that positive line and add `-pattern`. While the positive line remains, domsync treats the pair as a move, not a deletion.
 
@@ -139,7 +141,7 @@ After a successful sync the `-` lines disappear from the local file: the domain 
 
 ### Comments
 
-- `#` at the start of a line is a comment. Comments are local-only: they are kept in the local snapshot and are never written to the router.
+- `#` at the start of a line is a comment. Comments are local-only: they are kept in the local snapshot and are never written to the provider file.
 - Comments attach to the current section and are rendered immediately after that section's header, in their original order. Comments before the first section stay at the top of the file.
 - Inline comments are invalid. The line `+.example.com # note` is a validation error; put the note on its own line.
 - `//` is not a local comment. A local line starting with `//` is a pattern and is rejected.
@@ -147,77 +149,103 @@ After a successful sync the `-` lines disappear from the local file: the domain 
 
 ### Output rules
 
-Within each section, patterns are sorted; section order is otherwise preserved; the `other_section` is last. The local file is rewritten as a snapshot of the merged state, comments included. When the local file has sections, the router file contains `# [section]` headers followed by the same sorted patterns; a flat local file produces a flat router file. Router-only domains are added to `other_section`; if the local file already has that section it is reused, so a second one is never created.
+Within each section, patterns are sorted; section order is otherwise preserved; the `other_section` is last. The local file is rewritten as a snapshot of the merged state, comments included. When the local file has sections, the provider file contains `# [section]` headers followed by the same sorted patterns; a flat local file produces a flat provider file. Provider-only domains are added to `other_section`; if the local file already has that section it is reused, so a second one is never created.
 
-A missing local file is treated as an empty list, so the first run bootstraps the local snapshot from the router: every router domain is adopted and written locally. An empty local file with an empty router is a no-op. A plan whose final list would be empty while the router is not is an error: domsync refuses to wipe the router.
+A missing local file is treated as an empty list, so the first run bootstraps the local snapshot from the provider file: every provider-only domain is adopted and written locally. An empty local file with an empty provider file is a no-op. A plan whose final list would be empty while the provider file is not is an error: domsync refuses to wipe the provider file.
 
-Concurrent runs are refused. A run holds an exclusive lock on `<source.domains>.domsync.lock` from the moment the configuration is loaded until every write and post-write command has finished, so a cron job and a manual run cannot interleave their reads and writes. The lock file stays on disk after the run; the lock itself is released by the operating system when the process exits, including after a crash.
+Concurrent runs are refused. A run holds an exclusive lock on `<config-path>.domsync.lock` next to the config file from the moment the configuration is loaded until every write and post-write command has finished, so a cron job and a manual run cannot interleave their reads and writes. One lock covers the whole config, so two different configs can run at the same time. The lock file stays on disk after the run; the lock itself is released by the operating system when the process exits, including after a crash.
 
-### Router file validation
+### Provider file validation
 
-When reading the provider file from the router, domsync ignores blank lines and lines starting with `#` or `//`. Every other line must be a valid pattern; otherwise the run fails with the file, line number and offending text, and nothing is written. Duplicate patterns are collapsed. A bare `[media]` header on the router is therefore an error, not a domain.
+When reading the provider file from a server, domsync ignores blank lines and lines starting with `#` or `//`. Every other line must be a valid pattern; otherwise that pair fails with the file, line number and offending text, and nothing is written for it. Duplicate patterns are collapsed. A bare `[media]` header on the server is therefore an error, not a domain.
 
 ## Configuration reference
 
 YAML parsing is strict: unknown fields, multiple YAML documents and an empty file are errors.
 
+Top-level keys:
+
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `version` | integer | required | Must be `1`. |
-| `source.domains` | path | `domains.txt` | Local domain list, resolved relative to the config file. |
-| `target.host` | string | required | Router host name or address. |
-| `target.port` | integer | `22` | SSH port (1-65535). |
-| `target.user` | string | required | SSH user. |
-| `target.ssh_key` | path | empty | Private key (ed25519, ecdsa or rsa). If empty, `SSH_AUTH_SOCK` must provide an agent. Both are used when available. |
-| `target.known_hosts` | path | `~/.ssh/known_hosts` | Must already exist and be a regular file. |
-| `target.path` | string | required | Absolute path of the provider file on the router; a trailing `/` is rejected. |
-| `target.other_section` | string | `other` | Section that receives router-only domains. |
-| `target.mode` | string | `0644` | Octal permissions for the written provider file, at most `0777`. Quote it in YAML. |
-| `target.backup` | boolean | `true` | Copy the previous provider file to the backup path before replacing it. |
-| `target.backup_suffix` | string | `.domsync.bak` | Suffix appended to `target.path` for the backup file. |
-| `target.post_write.run` | string | `on_change` | When to run `target.post_write.commands`: `on_change`, `always` or `never`. |
-| `target.post_write.timeout` | duration string | `120s` | Timeout for each command. See the note below. |
-| `target.post_write.commands` | list of strings | empty | Commands run sequentially over the existing SSH connection. |
+| `version` | integer | required | Must be `2`; a `version: 1` config is rejected. |
+| `servers` | list | required | One or more servers; at least one entry. |
 | `update.check` | boolean | `true` | Check GitHub for a newer release at launch. `--no-update-check` overrides it. |
-| `logging.file` | path | empty (disabled) | When set, one summary line is appended on a completed run (and when a post-write command fails). |
+| `logging.file` | path | empty (disabled) | When set, one summary line is appended on every non-dry-run run that reaches the end, including runs with failed pairs or servers. |
 
-`target.post_write.run` values:
+Server keys:
 
-- `on_change` - run the commands only when the router provider file changed.
-- `always` - run them after every successful sync, including a run with no changes at all.
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `name` | string | required | Unique across servers, `[a-z0-9][a-z0-9_-]*`, at most 32 characters. Used in reports and logs. |
+| `enabled` | boolean | `true` | `false` skips the server entirely, `validate` included. See below. |
+| `host` | string | required | Server host name or address. |
+| `port` | integer | `22` | SSH port (1-65535). |
+| `user` | string | required | SSH user. |
+| `ssh_key` | path | empty | Private key (ed25519, ecdsa or rsa). If empty, `SSH_AUTH_SOCK` must provide an agent. Both are used when available. |
+| `known_hosts` | path | `~/.ssh/known_hosts` | Must already exist and be a regular file. |
+| `post_write.run` | string | `on_change` | When to run `post_write.commands`: `on_change`, `always` or `never`. |
+| `post_write.timeout` | duration string | `120s` | Timeout for each command. See the note below. |
+| `post_write.commands` | list of strings | empty | Commands run sequentially over the existing SSH connection, after the server's pairs. |
+| `files` | list | required | One or more pairs; at least one entry, even when the server is disabled. |
+
+File (pair) keys:
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `source` | path | required in version 2 | Local domain list, resolved relative to the config file. A regular file or absent; absent means an empty list. Must be unique across the whole config. |
+| `target` | string | required | Absolute path of the provider file on that server; a trailing `/` is rejected. Must be unique within the server; the same target on two servers is fine. |
+| `other_section` | string | `other` | Section that receives provider-only domains. |
+| `mode` | string | `0644` | Octal permissions for the written provider file, between `0001` and `0777`. Quote it in YAML. |
+| `backup` | boolean | `true` | Copy the previous provider file to the backup path before replacing it. |
+| `backup_suffix` | string | `.domsync.bak` | Suffix appended to `target` for the backup file. |
+
+Two pairs may not share a `source` (resolved absolute path): both would rewrite it, so the config is rejected naming both positions. Two pairs on the same server may not share a `target`; the same path on two different servers is fine. Relative paths resolve against the config file's directory and `~` expands to your home, as described in Quick start.
+
+`post_write.run` values:
+
+- `on_change` - run the commands when at least one pair on this server changed something, on the server or locally.
+- `always` - run them after every non-dry-run sync of the server, including a run with no changes and a run in which a pair failed.
 - `never` - never run them.
 
-`--dry-run` never runs commands, and no commands run when an earlier step failed. A failing command stops the sequence and exits with code 5.
+`--dry-run` never runs commands, and a server whose connection failed runs none. A command failure is recorded and does not undo any write; the sequence stops at the first failing command.
+
+`enabled: false` parks a server: `sync` and `validate` skip it entirely, and the report marks it `skipped`. Every shape check still applies to a disabled server — required fields, name syntax and uniqueness, `port`, `mode`, `other_section`, `post_write.run`, absolute `target`, unique `source` across the whole config, and unique `target` within the server — so a typo in a parked server is a config error, not a surprise on the day it is switched on. Only filesystem and environment checks are skipped: `ssh_key` exists, `known_hosts` exists, `SSH_AUTH_SOCK` when `ssh_key` is empty, and `source` being a regular file or absent. That makes `enabled: false` a legitimate way to park a server whose key is not on this machine yet.
 
 **The command timeout cannot be disabled.** `timeout` applies to each command separately. A value of `0s` is treated as "unset" and replaced by the built-in default of `120s`; negative values are rejected. Choose a large finite value if a command legitimately runs long.
 
 **Host keys are always verified.** This is true for key-file authentication and for ssh-agent authentication alike. There is no trust-on-first-use mode.
 
-Config validation runs before SSH is dialled: a missing key file, a missing `known_hosts`, or an empty `target.ssh_key` with `SSH_AUTH_SOCK` unset fails with exit code 1 before any connection is attempted.
+Config validation runs before SSH is dialled: a missing key file, a missing `known_hosts`, an empty `ssh_key` with `SSH_AUTH_SOCK` unset, or a `source` that is not a regular file fails with exit code 1 before any connection is attempted. Disabled servers are exempt from these filesystem checks.
 
 ## Validation
 
-`domsync validate` loads the configuration and parses the local list without opening an SSH connection. It covers everything `domsync` checks before dialing the router — the config schema, path resolution, the existence of `target.ssh_key` and `target.known_hosts`, and the local list syntax — and nothing that needs the router.
+`domsync validate` loads the configuration, walks every enabled server's pairs and parses each local list without opening an SSH connection. It covers everything `domsync` checks before dialling — the config schema, path resolution, cross-pair uniqueness, the existence of each server's `ssh_key` and `known_hosts`, and every local list's syntax — and nothing that needs a server. Disabled servers are skipped and reported as `skipped`.
+
+Validation continues past a broken pair: it is reported and the remaining pairs are still checked.
 
 ```sh
 domsync validate
 domsync --json validate
 ```
 
-Exit codes follow the table below: `1` for a configuration or read error and `2` for an invalid local list. With `--json` the output is one object with `ok`, `config`, `domains`, `total` and `sections`; on failure it carries an `error` object with the exit code and message.
+Exit codes follow the table below: `1` for a configuration or read error and `2` for an invalid local list. When several pairs fail, the exit code is the code of the first failure in config order (server order, then file order).
+
+With `--json` the output is one object with `ok` and `servers`; each server carries `name`, `ok`, `skipped` and `files`, and each file carries `source`, `ok`, `total`, `sections` and, on failure, an `error` object with the exit code and message. A config-level error produces `ok: false` with an `error` object and exits 1 before any pair is examined. Without `--json` the human output prints the resolved config path, then a block per server (`name`, then each local file with its counts) and the usual summary line (`domsync: N доменов, M секций`); a failed file prints `ошибка: ...`.
 
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
 | `0` | Success, including "no changes". Also `--help` and `--version`. |
-| `1` | Usage or configuration error, local file read/write error, log write error, or another run holding the local lock. |
-| `2` | Validation error in the local list or the router provider file, including `--strict` warnings, and an empty final list. |
+| `1` | Usage or configuration error, local file read/write error, log write error, or another run holding the config lock. |
+| `2` | Validation error in a local list or a provider file, including `--strict` warnings, and an empty final list. |
 | `3` | SSH connection, authentication, host-key or remote read/write/verify error. |
 | `4` | Update error, including the Homebrew/npm refusal. |
 | `5` | A post-write command failed (non-zero exit or transport error). |
 
-`--strict` only promotes local warnings (deletion target not found, redundant `+`/`-` in one section) to errors. Problems in the router file are always errors, and a failed launch-time update check never changes the sync exit code.
+When several things fail, the exit code is the code of the first failure in execution order: server order, then file order. A server that cannot be dialled counts at its own position, before its pairs, so a connection error beats a later pair failure. A failure in one pair or one server never stops the rest.
+
+`--strict` only promotes local warnings (deletion target not found, redundant `+`/`-` in one section) to errors, and fails only that pair. Problems in a provider file are always errors, and a failed launch-time update check never changes the sync exit code.
 
 ## Updates
 
@@ -249,30 +277,35 @@ So update those installs with `brew upgrade --cask domsync` or `npm i -g @domsyn
 
 ## Output
 
-The default human report is Russian and looks like this for a run that changed both files:
+The default human report is Russian and looks like this for a run that changed one pair:
 
 ```text
-domsync: 14 доменов, 3 секции
-  роутер: +1 −1, записан, бэкап /etc/openclash/rule_provider/domsync.txt.domsync.bak
-  локально: +1 −1, перемещён 1
-  команда: /etc/init.d/openclash restart — ok, 2.1s
+router (192.168.1.1)
+  domains/media.txt → /etc/openclash/rule_provider/media.txt
+    роутер: +2 −1, записан, бэкап /etc/openclash/rule_provider/media.txt.domsync.bak
+    локально: +1, перемещён 1
+  domains/ai.txt → /etc/openclash/rule_provider/ai.txt: без изменений
+  команда: /etc/init.d/openclash restart — ok, 0.8s
+vps-1: пропущен (disabled)
+domsync: 42 домена, 7 секций
 ```
 
-- The header reports the total number of domains and non-empty sections.
+- Each server block starts with its name and host, followed by one line per pair. A skipped server is a single `name: пропущен (disabled)` line; a server that failed to connect prints its name and the error, with the number of pairs that were not attempted.
+- A pair with no changes on either side stays on one line with `без изменений`; a failed pair prints `ошибка: <message>` on its own line.
 - `роутер` and `локально` show added and removed counts with the U+2212 minus sign. The router line adds `записан` only when the file was actually written, and the backup path when a backup was made; the local line adds `перемещён N` for moved patterns.
-- `без изменений` means that file was already identical.
+- The final line reports the total number of domains and non-empty sections across every pair that ran. A successful run without changes says `domsync: изменений нет (N доменов, M секций)`.
 - With `--dry-run`, each changed file is marked `будет записан (dry-run)`.
 - Command results are `ok, <duration>` or `ошибка <exit code>`; a transport failure prints `ошибка: <message>`.
 - Warnings print as `предупреждение: <message>`.
 
-`--dry-run` still connects to the router and reads the current provider file; it skips both writes and all commands. It is not an offline mode.
+`--dry-run` still connects to every enabled server and reads the current provider files; it skips both writes and all commands. It is not an offline mode.
 
-- `--json` writes a single JSON object to stdout; errors after argument parsing are JSON as well. The English field names are `ok`, `changed`, `dry_run`, `total`, `sections`, `router`, `local`, `warnings`, `commands`, `update`, `error`.
+- `--json` writes a single JSON object to stdout; errors after argument parsing are JSON as well. Top-level fields are `ok`, `changed`, `dry_run`, `total`, `sections`, `servers`, `warnings`, `update` and `error`; each server carries `name`, `host`, `ok`, `changed`, `skipped`, `skipped_pairs`, `files`, `commands` and `error`; each file carries `source`, `target`, `ok`, `changed`, `total`, `sections`, `router`, `local`, `warnings` and `error`.
 - `--quiet` prints only errors; `--verbose` adds update-check failures to the warnings; `--strict` treats local warnings as errors.
 
 ## Security
 
-- **Strict host key checking.** Every connection verifies the router key against `known_hosts` using `golang.org/x/crypto/ssh/knownhosts`, whether authentication uses a key file or the ssh-agent. An unknown key aborts with its SHA-256 fingerprint and a `ssh-keyscan` hint; a changed key aborts naming both the presented and the expected fingerprints. TOFU does not exist in v1. The host key type is negotiated from the algorithms recorded for the host in `known_hosts`, so a host with only one recorded key type is not rejected merely because the server also offers another.
+- **Strict host key checking.** Every connection verifies the server key against `known_hosts` using `golang.org/x/crypto/ssh/knownhosts`, whether authentication uses a key file or the ssh-agent. An unknown key aborts with its SHA-256 fingerprint and a `ssh-keyscan` hint; a changed key aborts naming both the presented and the expected fingerprints. TOFU does not exist in v1. The host key type is negotiated from the algorithms recorded for the host in `known_hosts`, so a host with only one recorded key type is not rejected merely because the server also offers another.
 - **Updates in v1 rely on SHA-256 only.** The binary checks the downloaded archive against `checksums.txt` from the release and extracts only the expected executable, rejecting path traversal. GoReleaser also publishes a cosign keyless signature bundle (`checksums.txt.sigstore.json`) and GitHub build attestations; these are for manual verification, not checked by the CLI. To verify a release by hand:
 
   ```sh

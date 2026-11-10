@@ -7,37 +7,99 @@ import (
 	"testing"
 )
 
-func TestJSONShape(t *testing.T) {
-	r := &Report{
-		OK: true, Changed: true, Total: 2, Sections: 1,
-		Router:   &FileDelta{Path: "/r", Changed: true, Written: true, Added: []string{"+.a.com"}, Removed: []string{}},
-		Local:    &FileDelta{Path: "./l", Changed: true, Written: true, Added: []string{"+.a.com"}, Removed: []string{}},
-		Warnings: []string{}, Commands: []Command{},
+func TestJSONNestsServersAndPairs(t *testing.T) {
+	rep := &Report{
+		OK: true, Changed: true, Total: 3, Sections: 1,
+		Servers: []ServerResult{{
+			Name: "router", OK: true, Changed: true,
+			Files: []FileResult{{
+				Source: "/l/domains.txt", Target: "/r/media.txt", OK: true, Changed: true,
+				Total: 3, Sections: 1,
+				Router: &FileDelta{Path: "/r/media.txt", Changed: true, Written: true, Added: []string{"+.a.com"}},
+				Local:  &FileDelta{Path: "/l/domains.txt", Changed: false},
+			}},
+			Commands: []Command{},
+		}},
+		Warnings: []string{},
 	}
 	var buf bytes.Buffer
-	if err := JSON(&buf, r); err != nil {
+	if err := JSON(&buf, rep); err != nil {
 		t.Fatal(err)
 	}
 	var got map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"ok", "changed", "total", "sections", "router", "local", "warnings", "commands"} {
-		if _, ok := got[key]; !ok {
-			t.Errorf("missing key %q in %s", key, buf.String())
-		}
+	if _, ok := got["router"]; ok {
+		t.Fatal("top-level router field must be gone")
 	}
-	router, ok := got["router"].(map[string]any)
-	if !ok || router["written"] != true {
-		t.Errorf("router written = %v in %s", got["router"], buf.String())
+	servers, ok := got["servers"].([]any)
+	if !ok || len(servers) != 1 {
+		t.Fatalf("servers = %v", got["servers"])
+	}
+	server := servers[0].(map[string]any)
+	files := server["files"].([]any)
+	pair := files[0].(map[string]any)
+	if pair["source"] != "/l/domains.txt" || pair["target"] != "/r/media.txt" {
+		t.Fatalf("pair = %v", pair)
+	}
+	if pair["router"].(map[string]any)["written"] != true {
+		t.Fatalf("router delta = %v", pair["router"])
+	}
+	if pair["local"].(map[string]any)["changed"] != false {
+		t.Fatalf("local delta = %v", pair["local"])
+	}
+	if _, ok := server["commands"].([]any); !ok {
+		t.Fatal("commands must be an empty array, not null")
+	}
+}
+
+func TestJSONNormalizesNestedNilSlices(t *testing.T) {
+	rep := &Report{
+		Servers: []ServerResult{{
+			Name:  "router",
+			Files: []FileResult{{Source: "/l", Target: "/r", Router: &FileDelta{}}},
+		}},
+		Warnings: []string{},
+	}
+	var buf bytes.Buffer
+	if err := JSON(&buf, rep); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "null") {
+		t.Fatalf("null in output: %s", buf.String())
+	}
+}
+
+func TestHumanPrintsServerBlocks(t *testing.T) {
+	rep := &Report{
+		OK: true, Changed: true, Total: 2, Sections: 1,
+		Servers: []ServerResult{
+			{Name: "router", Host: "192.168.1.1", OK: true, Changed: true, Files: []FileResult{{
+				Source: "/l/domains.txt", Target: "/r/media.txt", OK: true, Changed: true, Total: 2, Sections: 1,
+				Router: &FileDelta{Path: "/r/media.txt", Changed: true, Written: true, Added: []string{"+.a.com"}},
+			}}},
+			{Name: "vps-1", OK: true, Skipped: true},
+		},
+	}
+	var buf bytes.Buffer
+	Human(&buf, rep)
+	want := "router (192.168.1.1)\n  /l/domains.txt → /r/media.txt\n    роутер: +1 −0, записан\nvps-1: пропущен (disabled)\ndomsync: 2 домена, 1 секция\n"
+	if buf.String() != want {
+		t.Fatalf("human = %q, want %q", buf.String(), want)
 	}
 }
 
 func TestJSONMoveTags(t *testing.T) {
 	r := &Report{
-		Local:    &FileDelta{Moved: []Move{{Pattern: "+.a.com", From: "media", To: "misc"}}},
+		Servers: []ServerResult{{
+			Name: "router",
+			Files: []FileResult{{
+				Source: "/l", Target: "/r",
+				Local: &FileDelta{Moved: []Move{{Pattern: "+.a.com", From: "media", To: "misc"}}},
+			}},
+		}},
 		Warnings: []string{},
-		Commands: []Command{},
 	}
 	var buf bytes.Buffer
 	if err := JSON(&buf, r); err != nil {
@@ -54,7 +116,7 @@ func TestJSONNilSlicesAreArrays(t *testing.T) {
 	if err := JSON(&buf, &Report{OK: true}); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"warnings":[]`, `"commands":[]`} {
+	for _, want := range []string{`"warnings":[]`, `"servers":[]`} {
 		if !strings.Contains(buf.String(), want) {
 			t.Fatalf("output = %s, want substring %s", buf.String(), want)
 		}
@@ -107,11 +169,14 @@ func TestJSONUpdateAndError(t *testing.T) {
 
 func TestHumanNoChanges(t *testing.T) {
 	var buf bytes.Buffer
-	Human(&buf, &Report{OK: true, Total: 3, Sections: 1, Router: &FileDelta{Path: "/r"}, Local: &FileDelta{Path: "./l"}})
-	if !strings.Contains(buf.String(), "изменений нет") {
-		t.Fatalf("output = %q", buf.String())
-	}
-	want := "domsync: изменений нет (3 домена, 1 секция)\n  роутер: без изменений\n  локально: без изменений\n"
+	Human(&buf, &Report{
+		OK: true, Total: 3, Sections: 1,
+		Servers: []ServerResult{{
+			Name: "router", Host: "192.168.1.1",
+			Files: []FileResult{{Source: "/l", Target: "/r", Router: &FileDelta{Path: "/r"}, Local: &FileDelta{Path: "/l"}}},
+		}},
+	})
+	want := "router (192.168.1.1)\n  /l → /r: без изменений\ndomsync: изменений нет (3 домена, 1 секция)\n"
 	if buf.String() != want {
 		t.Fatalf("output = %q, want %q", buf.String(), want)
 	}
@@ -121,12 +186,20 @@ func TestHumanChanged(t *testing.T) {
 	var buf bytes.Buffer
 	Human(&buf, &Report{
 		OK: true, Changed: true, Total: 2, Sections: 1,
-		Router: &FileDelta{Path: "/r", Changed: true, Written: true, Added: []string{"+.a.com"}, Removed: []string{"+.b.com"}, Backup: "/r.domsync.bak"},
-		Local:  &FileDelta{Path: "./l", Changed: true, Written: true, Added: []string{"+.a.com"}, Removed: []string{"+.b.com"}, Moved: []Move{{Pattern: "+.c.com", From: "media", To: "misc"}}},
+		Servers: []ServerResult{{
+			Name: "router", Host: "192.168.1.1",
+			Files: []FileResult{{
+				Source: "/l", Target: "/r",
+				Router: &FileDelta{Path: "/r", Changed: true, Written: true, Added: []string{"+.a.com"}, Removed: []string{"+.b.com"}, Backup: "/r.domsync.bak"},
+				Local:  &FileDelta{Path: "/l", Changed: true, Written: true, Added: []string{"+.a.com"}, Removed: []string{"+.b.com"}, Moved: []Move{{Pattern: "+.c.com", From: "media", To: "misc"}}},
+			}},
+		}},
 	})
-	want := "domsync: 2 домена, 1 секция\n" +
-		"  роутер: +1 −1, записан, бэкап /r.domsync.bak\n" +
-		"  локально: +1 −1, перемещён 1\n"
+	want := "router (192.168.1.1)\n" +
+		"  /l → /r\n" +
+		"    роутер: +1 −1, записан, бэкап /r.domsync.bak\n" +
+		"    локально: +1 −1, перемещён 1\n" +
+		"domsync: 2 домена, 1 секция\n"
 	if buf.String() != want {
 		t.Fatalf("output = %q, want %q", buf.String(), want)
 	}
@@ -136,12 +209,20 @@ func TestHumanDryRun(t *testing.T) {
 	var buf bytes.Buffer
 	Human(&buf, &Report{
 		OK: true, Changed: true, DryRun: true, Total: 2, Sections: 1,
-		Router: &FileDelta{Path: "/r", Changed: true, Skipped: true, Added: []string{"+.a.com"}, Removed: []string{"+.b.com"}},
-		Local:  &FileDelta{Path: "./l", Changed: true, Skipped: true, Added: []string{"+.a.com"}, Removed: []string{"+.b.com"}, Moved: []Move{{Pattern: "+.c.com", From: "media", To: "misc"}}},
+		Servers: []ServerResult{{
+			Name: "router", Host: "192.168.1.1",
+			Files: []FileResult{{
+				Source: "/l", Target: "/r",
+				Router: &FileDelta{Path: "/r", Changed: true, Skipped: true, Added: []string{"+.a.com"}, Removed: []string{"+.b.com"}},
+				Local:  &FileDelta{Path: "/l", Changed: true, Skipped: true, Added: []string{"+.a.com"}, Removed: []string{"+.b.com"}, Moved: []Move{{Pattern: "+.c.com", From: "media", To: "misc"}}},
+			}},
+		}},
 	})
-	want := "domsync: 2 домена, 1 секция\n" +
-		"  роутер: +1 −1, будет записан (dry-run)\n" +
-		"  локально: +1 −1, перемещён 1, будет записан (dry-run)\n"
+	want := "router (192.168.1.1)\n" +
+		"  /l → /r\n" +
+		"    роутер: +1 −1, будет записан (dry-run)\n" +
+		"    локально: +1 −1, перемещён 1, будет записан (dry-run)\n" +
+		"domsync: 2 домена, 1 секция\n"
 	if buf.String() != want {
 		t.Fatalf("output = %q, want %q", buf.String(), want)
 	}
@@ -151,12 +232,20 @@ func TestHumanDryRunRootFlag(t *testing.T) {
 	var buf bytes.Buffer
 	Human(&buf, &Report{
 		OK: true, Changed: true, DryRun: true, Total: 2, Sections: 1,
-		Router: &FileDelta{Path: "/r", Changed: true, Added: []string{"+.a.com"}, Removed: []string{"+.b.com"}},
-		Local:  &FileDelta{Path: "./l", Changed: true, Added: []string{"+.a.com"}, Removed: []string{"+.b.com"}},
+		Servers: []ServerResult{{
+			Name: "router", Host: "192.168.1.1",
+			Files: []FileResult{{
+				Source: "/l", Target: "/r",
+				Router: &FileDelta{Path: "/r", Changed: true, Added: []string{"+.a.com"}, Removed: []string{"+.b.com"}},
+				Local:  &FileDelta{Path: "/l", Changed: true, Added: []string{"+.a.com"}, Removed: []string{"+.b.com"}},
+			}},
+		}},
 	})
-	want := "domsync: 2 домена, 1 секция\n" +
-		"  роутер: +1 −1, будет записан (dry-run)\n" +
-		"  локально: +1 −1, будет записан (dry-run)\n"
+	want := "router (192.168.1.1)\n" +
+		"  /l → /r\n" +
+		"    роутер: +1 −1, будет записан (dry-run)\n" +
+		"    локально: +1 −1, будет записан (dry-run)\n" +
+		"domsync: 2 домена, 1 секция\n"
 	if buf.String() != want {
 		t.Fatalf("output = %q, want %q", buf.String(), want)
 	}
@@ -166,9 +255,15 @@ func TestHumanRouterIgnoresMoved(t *testing.T) {
 	var buf bytes.Buffer
 	Human(&buf, &Report{
 		OK: true, Changed: true, Total: 1, Sections: 1,
-		Router: &FileDelta{Path: "/r", Changed: true, Written: true, Added: []string{}, Removed: []string{}, Moved: []Move{{Pattern: "+.a.com", From: "media", To: "misc"}}},
+		Servers: []ServerResult{{
+			Name: "router", Host: "192.168.1.1",
+			Files: []FileResult{{
+				Source: "/l", Target: "/r",
+				Router: &FileDelta{Path: "/r", Changed: true, Written: true, Added: []string{}, Removed: []string{}, Moved: []Move{{Pattern: "+.a.com", From: "media", To: "misc"}}},
+			}},
+		}},
 	})
-	want := "domsync: 1 домен, 1 секция\n  роутер: +0 −0, записан\n"
+	want := "router (192.168.1.1)\n  /l → /r\n    роутер: +0 −0, записан\ndomsync: 1 домен, 1 секция\n"
 	if buf.String() != want {
 		t.Fatalf("output = %q, want %q", buf.String(), want)
 	}
@@ -178,16 +273,18 @@ func TestHumanCommandAndWarning(t *testing.T) {
 	var buf bytes.Buffer
 	Human(&buf, &Report{
 		OK: true, Changed: true, Total: 2, Sections: 1,
-		Router:   &FileDelta{Path: "/r"},
-		Local:    &FileDelta{Path: "./l"},
-		Commands: []Command{{Command: "restart", ExitCode: 0, DurationMS: 2100}},
+		Servers: []ServerResult{{
+			Name: "router", Host: "192.168.1.1",
+			Files:    []FileResult{{Source: "/l", Target: "/r", Router: &FileDelta{Path: "/r"}, Local: &FileDelta{Path: "/l"}}},
+			Commands: []Command{{Command: "restart", ExitCode: 0, DurationMS: 2100}},
+		}},
 		Warnings: []string{"test warning"},
 	})
-	want := "domsync: 2 домена, 1 секция\n" +
-		"  роутер: без изменений\n" +
-		"  локально: без изменений\n" +
+	want := "router (192.168.1.1)\n" +
+		"  /l → /r: без изменений\n" +
 		"  команда: restart — ok, 2.1s\n" +
-		"  предупреждение: test warning\n"
+		"  предупреждение: test warning\n" +
+		"domsync: 2 домена, 1 секция\n"
 	if buf.String() != want {
 		t.Fatalf("output = %q, want %q", buf.String(), want)
 	}
@@ -207,7 +304,10 @@ func TestHumanCommandDurations(t *testing.T) {
 		var buf bytes.Buffer
 		Human(&buf, &Report{
 			OK: true, Changed: true, Total: 1, Sections: 1,
-			Commands: []Command{{Command: "restart", ExitCode: 0, DurationMS: tc.ms}},
+			Servers: []ServerResult{{
+				Name:     "router",
+				Commands: []Command{{Command: "restart", ExitCode: 0, DurationMS: tc.ms}},
+			}},
 		})
 		if !strings.Contains(buf.String(), tc.want) {
 			t.Errorf("duration %dms output = %q, want substring %q", tc.ms, buf.String(), tc.want)
@@ -249,14 +349,60 @@ func TestHumanPartialError(t *testing.T) {
 	var buf bytes.Buffer
 	Human(&buf, &Report{
 		OK: false, Changed: true, Total: 1, Sections: 1,
-		Router:   &FileDelta{Path: "/r", Changed: true, Written: true, Added: []string{"+.a.com"}, Removed: []string{}},
-		Commands: []Command{{Command: "/etc/init.d/openclash restart", ExitCode: 1, DurationMS: 20}},
+		Servers: []ServerResult{{
+			Name: "router", Host: "192.168.1.1", OK: false, Changed: true,
+			Files: []FileResult{{
+				Source: "/l", Target: "/r", OK: false,
+				Router:   &FileDelta{Path: "/r", Changed: true, Written: true, Added: []string{"+.a.com"}, Removed: []string{}},
+				Warnings: []string{"pair warning"},
+				Error:    &ErrorInfo{Code: 2, Message: "bad pair"},
+			}},
+			Commands: []Command{{Command: "/etc/init.d/openclash restart", ExitCode: 1, DurationMS: 20}},
+		}},
 		Warnings: []string{},
 		Error:    &ErrorInfo{Code: 5, Message: "command failed"},
 	})
-	want := "domsync: 1 домен, 1 секция\n" +
-		"  роутер: +1 −0, записан\n" +
-		"  команда: /etc/init.d/openclash restart — ошибка 1\n"
+	want := "router (192.168.1.1)\n" +
+		"  /l → /r\n" +
+		"    роутер: +1 −0, записан\n" +
+		"    ошибка: bad pair\n" +
+		"    предупреждение: pair warning\n" +
+		"  команда: /etc/init.d/openclash restart — ошибка 1\n" +
+		"domsync: 1 домен, 1 секция\n"
+	if buf.String() != want {
+		t.Fatalf("output = %q, want %q", buf.String(), want)
+	}
+}
+
+func TestHumanFailedPairPrintsNoChangesLine(t *testing.T) {
+	var buf bytes.Buffer
+	Human(&buf, &Report{
+		OK: false,
+		Servers: []ServerResult{{
+			Name: "router", Host: "192.168.1.1", OK: false,
+			Files: []FileResult{{
+				Source: "/l", Target: "/r", OK: false,
+				Error: &ErrorInfo{Code: 2, Message: "bad domain"},
+			}},
+		}},
+	})
+	want := "router (192.168.1.1)\n  /l → /r\n    ошибка: bad domain\n"
+	if buf.String() != want {
+		t.Fatalf("output = %q, want %q", buf.String(), want)
+	}
+}
+
+func TestHumanServerError(t *testing.T) {
+	var buf bytes.Buffer
+	Human(&buf, &Report{
+		OK: false,
+		Servers: []ServerResult{{
+			Name: "vps-1", Host: "10.0.0.1", OK: false, SkippedPairs: 2,
+			Files: []FileResult{}, Commands: []Command{},
+			Error: &ErrorInfo{Code: 3, Message: "dial tcp: connection refused"},
+		}},
+	})
+	want := "vps-1: ошибка: dial tcp: connection refused (пропущено пар: 2)\n"
 	if buf.String() != want {
 		t.Fatalf("output = %q, want %q", buf.String(), want)
 	}
@@ -275,7 +421,7 @@ func TestFailure(t *testing.T) {
 	if r.OK || r.Error == nil || r.Error.Code != 2 {
 		t.Fatalf("report = %+v", r)
 	}
-	if r.Warnings == nil || r.Commands == nil {
+	if r.Warnings == nil || r.Servers == nil {
 		t.Fatalf("empty slices missing: %+v", r)
 	}
 }

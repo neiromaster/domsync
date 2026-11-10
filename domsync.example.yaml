@@ -1,27 +1,44 @@
-version: 1
+version: 2
 
-source:
-  domains: ./domains.txt
-
-target:
-  host: 192.168.0.1
-  port: 22
-  user: root
-  ssh_key: ~/.ssh/id_ed25519
-  known_hosts: ~/.ssh/known_hosts
-  path: /etc/openclash/rule_provider/domsync.txt
-  other_section: other
-  mode: "0644"
-  backup: true
-  backup_suffix: .domsync.bak
-  post_write:
-    run: on_change
-    timeout: 120s
-    commands:
-      - /etc/init.d/openclash restart
+logging:
+  file: ""
 
 update:
   check: true
 
-logging:
-  file: ""
+servers:
+  - name: router
+    host: 192.168.0.1
+    port: 22
+    user: root
+    ssh_key: ~/.ssh/id_ed25519
+    known_hosts: ~/.ssh/known_hosts
+    post_write:
+      run: on_change
+      timeout: 120s
+      commands:
+        - /etc/init.d/openclash restart
+    files:
+      - source: ./domains/media.txt
+        target: /etc/openclash/rule_provider/media.txt
+      - source: ./domains/ai.txt
+        target: /etc/openclash/rule_provider/ai.txt
+        other_section: other
+        mode: "0644"
+        backup: true
+        backup_suffix: .domsync.bak
+
+  - name: vps-1
+    enabled: true
+    host: vps.example.com
+    port: 2222
+    user: deploy
+    ssh_key: ~/.ssh/vps1
+    known_hosts: ~/.ssh/known_hosts
+    post_write:
+      run: always
+      commands:
+        - systemctl restart mihomo
+    files:
+      - source: ./domains/vps1-media.txt
+        target: /etc/mihomo/providers/media.txt

@@ -91,7 +91,6 @@ func updateSuccessReport(cli CLI, stdout, stderr io.Writer, info *report.UpdateI
 	rep := &report.Report{
 		OK:       true,
 		Warnings: []string{},
-		Commands: []report.Command{},
 		Update:   info,
 	}
 	if err := report.JSON(stdout, rep); err != nil {
