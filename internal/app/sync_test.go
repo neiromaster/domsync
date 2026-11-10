@@ -424,19 +424,19 @@ func TestSyncLocalOnlyRewriteDoesNotRenderWritten(t *testing.T) {
 	}
 }
 
-func TestSyncRefusesWhenAnotherRunHoldsTheLock(t *testing.T) {
-	cfgPath, _ := setupOne(t, "+.a.com\n", "")
-	lock, err := acquireRunLock(lockPath(cfgPath))
+func TestSyncRefusesWhenAnotherRunHoldsTheConfigLock(t *testing.T) {
+	cfgPath, _ := setupOne(t, "[media]\n+.a.com\n", "# [media]\n+.a.com\n")
+	held, err := acquireRunLock(lockPath(cfgPath))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = lock.release() }()
+	defer func() { _ = held.release() }()
 	_, err = Sync(context.Background(), SyncOptions{ConfigPath: cfgPath}, dialNever(t))
-	if err == nil {
-		t.Fatal("expected a lock error")
-	}
-	if ExitCode(err) != 1 || !strings.Contains(err.Error(), "another domsync run is in progress") {
+	if err == nil || ExitCode(err) != 1 {
 		t.Fatalf("code=%d err=%v", ExitCode(err), err)
+	}
+	if !strings.Contains(err.Error(), "another domsync run is in progress") {
+		t.Fatalf("err=%v", err)
 	}
 }
 

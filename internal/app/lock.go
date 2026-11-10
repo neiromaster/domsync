@@ -10,8 +10,8 @@ type runLock struct {
 	file *flock.Flock
 }
 
-func lockPath(local string) string {
-	return local + ".domsync.lock"
+func lockPath(configPath string) string {
+	return configPath + ".domsync.lock"
 }
 
 func acquireRunLock(path string) (*runLock, error) {
