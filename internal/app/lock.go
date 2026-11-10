@@ -30,6 +30,7 @@ func acquireRunLock(path string) (*runLock, error) {
 	if !locked {
 		return nil, fmt.Errorf("another domsync run is in progress (lock %s)", path)
 	}
+	hideLockFile(path)
 	return &runLock{file: file}, nil
 }
 
