@@ -19,8 +19,10 @@ The cask works on macOS and, with Homebrew 6.0 or newer, on Linux.
 npm (macOS, Linux and Windows):
 
 ```sh
-npm i -g @domsync/cli
+npm i -g @domsync/domsync
 ```
+
+Earlier releases were published as `@domsync/cli`; that name is deprecated. Switch with `npm uninstall -g @domsync/cli && npm i -g @domsync/domsync`.
 
 Go (any platform with a Go toolchain, built from source):
 
@@ -270,10 +272,10 @@ domsync does not replace binaries installed by Homebrew or npm. The install meth
 
 ```text
 domsync установлен через Homebrew. Обновление: brew upgrade --cask domsync
-domsync установлен через npm. Обновление: npm i -g @domsync/cli@latest
+domsync установлен через npm. Обновление: npm i -g @domsync/domsync@latest
 ```
 
-So update those installs with `brew upgrade --cask domsync` or `npm i -g @domsync/cli@latest`. The same refusal applies to `domsync update --check`, because install detection happens first. A standalone binary is replaced atomically after its archive has been checked against `checksums.txt`.
+So update those installs with `brew upgrade --cask domsync` or `npm i -g @domsync/domsync@latest`. The same refusal applies to `domsync update --check`, because install detection happens first. A standalone binary is replaced atomically after its archive has been checked against `checksums.txt`.
 
 ## Uninstall
 
@@ -287,7 +289,7 @@ domsync --dry-run uninstall   # print what would be removed and change nothing
 
 Enter, or anything other than `y`, `yes`, `д` or `да`, cancels and exits with code 4. Without a terminal the question cannot be asked, so `--yes` is required.
 
-The install method is detected the same way as for updates. Homebrew and npm installs are removed through the package manager: domsync runs `brew uninstall --cask --zap domsync` or `npm uninstall -g @domsync/cli` itself and then removes the cache directory. The cask declares a `zap` stanza for that directory, so `brew uninstall --cask --zap domsync` is just as complete without this command. On Windows a running npm package cannot delete itself, so the command prints the npm command and exits 4; the same happens when `brew` or `npm` is not on `PATH`, except the cache directory is still removed.
+The install method is detected the same way as for updates. Homebrew and npm installs are removed through the package manager: domsync runs `brew uninstall --cask --zap domsync` or `npm uninstall -g @domsync/domsync` itself and then removes the cache directory. The cask declares a `zap` stanza for that directory, so `brew uninstall --cask --zap domsync` is just as complete without this command. On Windows a running npm package cannot delete itself, so the command prints the npm command and exits 4; the same happens when `brew` or `npm` is not on `PATH`, except the cache directory is still removed.
 
 The empty hidden `.<name>.lock` beside a config (`.domsync.lock` for `domsync.yaml`) is a run lock, not an install artifact; it goes away with the config.
 
@@ -361,7 +363,7 @@ go test ./internal/domainlist -run '^$' -fuzz FuzzParseRemote -fuzztime 30s
 
 Tagging `v*` runs `.github/workflows/release.yml`. Maintainers need:
 
-- **No npm token.** The `npm` job requests `id-token: write` and `.github/scripts/publish-npm.sh` publishes the `@domsync/cli` launcher and the six `@domsync/<os>-<cpu>` platform packages through [trusted publishing](https://docs.npmjs.com/trusted-publishers/): npm exchanges the GitHub OIDC token for a short-lived credential and attaches provenance. Each of the seven package names needs a trusted publisher configured on npmjs.com (`neiromaster` / `domsync` / `release.yml`, no environment), or on the command line with `npm trust github <package> --file release.yml --repo neiromaster/domsync --allow-publish`.
+- **No npm token.** The `npm` job requests `id-token: write` and `.github/scripts/publish-npm.sh` publishes the `@domsync/domsync` launcher and the six `@domsync/<os>-<cpu>` platform packages through [trusted publishing](https://docs.npmjs.com/trusted-publishers/): npm exchanges the GitHub OIDC token for a short-lived credential and attaches provenance. Each of the seven package names needs a trusted publisher configured on npmjs.com (`neiromaster` / `domsync` / `release.yml`, no environment), or on the command line with `npm trust github <package> --file release.yml --repo neiromaster/domsync --allow-publish`.
   npm only accepts a trusted publisher for a package that already exists, so the first release is published once by a maintainer: run `npm login` (2FA), then, after the GitHub release exists, `GITHUB_TOKEN=$(gh auth token) GITHUB_REF_NAME=<tag> GITHUB_REPOSITORY=neiromaster/domsync ./.github/scripts/publish-npm.sh`. After that, tag pushes publish without credentials. The script generates provenance only inside GitHub Actions, so the bootstrap version is published without it.
 - A `neiromaster/homebrew-tap` repository and a `HOMEBREW_TAP_TOKEN` secret with write access to it, used by the cask publisher.
 - A **public** repository. The Scorecard workflow sets `publish_results: true`, which requires public visibility.

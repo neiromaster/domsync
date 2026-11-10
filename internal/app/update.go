@@ -33,7 +33,7 @@ func runUpdate(ctx context.Context, cli CLI, stdout, stderr io.Writer) int {
 	case update.InstallBrew:
 		return updateFailure(cli, stdout, stderr, "domsync установлен через Homebrew. Обновление: brew upgrade --cask domsync")
 	case update.InstallNPM:
-		return updateFailure(cli, stdout, stderr, "domsync установлен через npm. Обновление: npm i -g @domsync/cli@latest")
+		return updateFailure(cli, stdout, stderr, "domsync установлен через npm. Обновление: npm i -g @domsync/domsync@latest")
 	}
 	if cli.Update != nil && cli.Update.Check {
 		return runUpdateCheck(ctx, cli, stdout, stderr)

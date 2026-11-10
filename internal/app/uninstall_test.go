@@ -149,7 +149,7 @@ func TestRunUninstallNPMRunsPackageManager(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code=%d err=%q", code, errOut.String())
 	}
-	want := "npm uninstall -g @domsync/cli"
+	want := "npm uninstall -g @domsync/domsync"
 	if len(env.calls) != 1 || env.calls[0] != want {
 		t.Fatalf("calls=%v want [%q]", env.calls, want)
 	}
@@ -168,7 +168,7 @@ func TestRunUninstallNPMOnWindowsPrintsCommand(t *testing.T) {
 	if len(env.calls) != 0 {
 		t.Fatalf("calls=%v, want none", env.calls)
 	}
-	if !strings.Contains(errOut.String(), "npm uninstall -g @domsync/cli") {
+	if !strings.Contains(errOut.String(), "npm uninstall -g @domsync/domsync") {
 		t.Fatalf("err=%q", errOut.String())
 	}
 	if env.exists(env.cache) {

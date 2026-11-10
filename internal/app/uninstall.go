@@ -99,7 +99,7 @@ func uninstallPackageCommand(kind update.InstallKind) []string {
 	case update.InstallBrew:
 		return []string{"brew", "uninstall", "--cask", "--zap", "domsync"}
 	case update.InstallNPM:
-		return []string{"npm", "uninstall", "-g", "@domsync/cli"}
+		return []string{"npm", "uninstall", "-g", "@domsync/domsync"}
 	default:
 		return nil
 	}
