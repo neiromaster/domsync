@@ -102,13 +102,13 @@ func runSync(ctx context.Context, cli CLI, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func dialConfig(ctx context.Context, cfg config.Config) (Runner, error) {
+func dialConfig(ctx context.Context, srv config.Server) (Runner, error) {
 	return sshclient.Dial(ctx, sshclient.Options{
-		Host:       cfg.Target.Host,
-		Port:       cfg.Target.Port,
-		User:       cfg.Target.User,
-		KeyPath:    cfg.Target.SSHKey,
-		KnownHosts: cfg.Target.KnownHosts,
+		Host:       srv.Host,
+		Port:       srv.Port,
+		User:       srv.User,
+		KeyPath:    srv.SSHKey,
+		KnownHosts: srv.KnownHosts,
 		Passphrase: passphraseFromTerminal(),
 		Timeout:    10 * time.Second,
 	})

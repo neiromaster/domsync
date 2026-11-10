@@ -38,51 +38,150 @@ type SyncOptions struct {
 
 const maxLocalSize = 10 << 20
 
-func Sync(ctx context.Context, opts SyncOptions, dial func(context.Context, config.Config) (Runner, error)) (*report.Report, error) {
+func Sync(ctx context.Context, opts SyncOptions, dial func(context.Context, config.Server) (Runner, error)) (*report.Report, error) {
 	cfg, err := config.Load(opts.ConfigPath)
 	if err != nil {
 		return nil, err
 	}
-	lock, err := acquireRunLock(lockPath(cfg.Source.Domains))
+	lock, err := acquireRunLock(lockPath(cfg.Path()))
 	if err != nil {
 		return nil, withCode(1, err)
 	}
 	defer func() { _ = lock.release() }()
-	localBytes, err := readLocal(cfg.Source.Domains)
-	if err != nil {
-		return nil, err
+
+	rep := &report.Report{
+		OK:       true,
+		DryRun:   opts.DryRun,
+		Servers:  make([]report.ServerResult, 0, len(cfg.Servers)),
+		Warnings: []string{},
 	}
-	localFile, err := domainlist.ParseLocal(localBytes, cfg.Source.Domains)
-	if err != nil {
-		return nil, withCode(2, err)
+	var firstErr error
+	for _, srv := range cfg.Servers {
+		result, err := syncServer(ctx, opts, srv, dial)
+		rep.Servers = append(rep.Servers, result)
+		rep.OK = rep.OK && result.OK
+		rep.Changed = rep.Changed || result.Changed
+		for _, file := range result.Files {
+			rep.Total += file.Total
+			rep.Sections += file.Sections
+		}
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
 	}
-	runner, err := dial(ctx, *cfg)
+
+	if !opts.DryRun {
+		if logErr := appendLog(cfg, rep); logErr != nil {
+			rep.OK = false
+			if firstErr == nil {
+				firstErr = withCode(1, logErr)
+			}
+			return rep, firstErr
+		}
+	}
+	checkForUpdate(ctx, opts, cfg, rep)
+	return rep, firstErr
+}
+
+func syncServer(ctx context.Context, opts SyncOptions, srv config.Server, dial func(context.Context, config.Server) (Runner, error)) (report.ServerResult, error) {
+	result := report.ServerResult{
+		Name:     srv.Name,
+		Host:     srv.Host,
+		OK:       true,
+		Files:    []report.FileResult{},
+		Commands: []report.Command{},
+	}
+	if !srv.IsEnabled() {
+		result.Skipped = true
+		return result, nil
+	}
+
+	runner, err := dial(ctx, srv)
 	if err != nil {
-		return nil, withCode(3, err)
+		result.OK = false
+		result.SkippedPairs = len(srv.Files)
+		result.Error = &report.ErrorInfo{Code: 3, Message: err.Error()}
+		return result, withCode(3, err)
 	}
 	defer func() { _ = runner.Close() }()
 
-	remoteBytes, err := runner.ReadFile(ctx, cfg.Target.Path)
+	var firstErr error
+	for _, pair := range srv.Files {
+		file, err := syncPair(ctx, runner, pair, opts.DryRun, opts.Strict)
+		result.Files = append(result.Files, *file)
+		result.Changed = result.Changed || file.Changed
+		if err != nil {
+			result.OK = false
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+
+	if !opts.DryRun && runsPostWrite(srv.PostWrite, result.Changed) {
+		if err := runPostWrite(ctx, runner, srv.PostWrite, &result.Commands); err != nil {
+			result.OK = false
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return result, firstErr
+}
+
+func runsPostWrite(post config.PostWrite, changed bool) bool {
+	switch post.Run {
+	case "always":
+		return true
+	case "on_change":
+		return changed
+	default:
+		return false
+	}
+}
+
+func syncPair(ctx context.Context, runner Runner, pair config.Pair, dryRun, strict bool) (*report.FileResult, error) {
+	result := &report.FileResult{
+		Source:   pair.Source,
+		Target:   pair.Target,
+		Warnings: []string{},
+	}
+	fail := func(code int, err error) (*report.FileResult, error) {
+		result.OK = false
+		result.Error = &report.ErrorInfo{Code: code, Message: err.Error()}
+		return result, withCode(code, err)
+	}
+
+	localBytes, err := readLocal(pair.Source)
+	if err != nil {
+		return fail(1, err)
+	}
+	localFile, err := domainlist.ParseLocal(localBytes, pair.Source)
+	if err != nil {
+		return fail(2, err)
+	}
+	remoteBytes, err := runner.ReadFile(ctx, pair.Target)
 	if err != nil {
 		if !errors.Is(err, sshclient.ErrNotExist) {
-			return nil, withCode(3, err)
+			return fail(3, err)
 		}
 		remoteBytes = []byte{}
 	}
-	remote, err := domainlist.ParseRemote(remoteBytes, cfg.Target.Path)
+	remote, err := domainlist.ParseRemote(remoteBytes, pair.Target)
 	if err != nil {
-		return nil, withCode(2, err)
+		return fail(2, err)
 	}
 	plan, err := domainlist.BuildPlan(domainlist.Input{
 		Local:        localFile,
 		Remote:       remote,
-		OtherSection: cfg.Target.OtherSection,
+		OtherSection: pair.OtherSection,
 	})
 	if err != nil {
-		return nil, withCode(2, err)
+		return fail(2, err)
 	}
-	if opts.Strict && len(plan.Warnings) > 0 {
-		return nil, withCode(2, errors.New(strings.Join(plan.Warnings, "; ")))
+	result.Warnings = plan.Warnings
+	if strict && len(plan.Warnings) > 0 {
+		return fail(2, errors.New(strings.Join(plan.Warnings, "; ")))
 	}
 
 	renderedRemote := domainlist.RenderRemote(plan)
@@ -90,69 +189,74 @@ func Sync(ctx context.Context, opts SyncOptions, dial func(context.Context, conf
 	routerChanged := !bytes.Equal(renderedRemote, remoteBytes)
 	localChanged := !bytes.Equal(renderedLocal, localBytes)
 
-	rep := &report.Report{
-		OK:       true,
-		Changed:  routerChanged || localChanged,
-		DryRun:   opts.DryRun,
-		Total:    plan.Count(),
-		Sections: plan.SectionCount(),
-		Router: &report.FileDelta{
-			Path:    cfg.Target.Path,
-			Changed: routerChanged,
-			Skipped: opts.DryRun && routerChanged,
-			Added:   plan.RouterAdded,
-			Removed: plan.RouterRemoved,
-		},
-		Local: &report.FileDelta{
-			Path:    cfg.Source.Domains,
-			Changed: localChanged,
-			Skipped: opts.DryRun && localChanged,
-			Added:   plan.LocalAdded,
-			Removed: plan.LocalRemoved,
-			Moved:   reportMoves(plan.LocalMoved),
-		},
-		Warnings: plan.Warnings,
-		Commands: []report.Command{},
+	result.OK = true
+	result.Changed = routerChanged || localChanged
+	result.Total = plan.Count()
+	result.Sections = plan.SectionCount()
+	result.Router = &report.FileDelta{
+		Path:    pair.Target,
+		Changed: routerChanged,
+		Skipped: dryRun && routerChanged,
+		Added:   plan.RouterAdded,
+		Removed: plan.RouterRemoved,
 	}
-	if opts.DryRun {
-		checkForUpdate(ctx, opts, cfg, rep)
-		return rep, nil
+	result.Local = &report.FileDelta{
+		Path:    pair.Source,
+		Changed: localChanged,
+		Skipped: dryRun && localChanged,
+		Added:   plan.LocalAdded,
+		Removed: plan.LocalRemoved,
+		Moved:   reportMoves(plan.LocalMoved),
+	}
+	if dryRun {
+		return result, nil
 	}
 
 	if routerChanged {
-		result, err := runner.WriteFileAtomic(ctx, cfg.Target.Path, renderedRemote, sshclient.WriteOptions{
-			Mode:         cfg.Target.FileMode(),
-			Backup:       cfg.Target.BackupEnabled(),
-			BackupSuffix: cfg.Target.BackupSuffix,
+		written, err := runner.WriteFileAtomic(ctx, pair.Target, renderedRemote, sshclient.WriteOptions{
+			Mode:         pair.FileMode(),
+			Backup:       pair.BackupEnabled(),
+			BackupSuffix: pair.BackupSuffix,
 		})
 		if err != nil {
-			rep.OK = false
-			return rep, withCode(3, err)
+			return fail(3, err)
 		}
-		rep.Router.Backup = result.BackupPath
-		rep.Router.Written = true
+		result.Router.Backup = written.BackupPath
+		result.Router.Written = true
 	}
 	if localChanged {
-		if err := writeLocalAtomic(cfg.Source.Domains, renderedLocal); err != nil {
-			rep.OK = false
-			return rep, withCode(1, err)
+		if err := writeLocalAtomic(pair.Source, renderedLocal); err != nil {
+			return fail(1, err)
 		}
-		rep.Local.Written = true
+		result.Local.Written = true
 	}
+	return result, nil
+}
 
-	if err := runPostWrite(ctx, runner, cfg, rep, routerChanged); err != nil {
-		rep.OK = false
-		if logErr := appendLog(cfg, rep); logErr != nil {
-			return rep, withCode(1, logErr)
+func runPostWrite(ctx context.Context, runner Runner, post config.PostWrite, commands *[]report.Command) error {
+	timeout := time.Duration(post.Timeout)
+	for _, command := range post.Commands {
+		start := time.Now()
+		result, err := runner.Run(ctx, command, timeout)
+		entry := report.Command{
+			Command:    command,
+			ExitCode:   result.ExitCode,
+			Stdout:     result.Stdout,
+			Stderr:     result.Stderr,
+			DurationMS: time.Since(start).Milliseconds(),
 		}
-		return rep, err
+		if err != nil {
+			entry.Error = err.Error()
+		}
+		*commands = append(*commands, entry)
+		if err != nil {
+			return withCode(5, fmt.Errorf("command %q: %w", command, err))
+		}
+		if result.ExitCode != 0 {
+			return withCode(5, fmt.Errorf("command %q: exit %d: %s", command, result.ExitCode, strings.TrimSpace(result.Stderr)))
+		}
 	}
-	if err := appendLog(cfg, rep); err != nil {
-		rep.OK = false
-		return rep, withCode(1, err)
-	}
-	checkForUpdate(ctx, opts, cfg, rep)
-	return rep, nil
+	return nil
 }
 
 func checkForUpdate(ctx context.Context, opts SyncOptions, cfg *config.Config, rep *report.Report) {
@@ -196,39 +300,6 @@ func readLocal(path string) ([]byte, error) {
 	return data, nil
 }
 
-func runPostWrite(ctx context.Context, runner Runner, cfg *config.Config, rep *report.Report, routerChanged bool) error {
-	post := cfg.Target.PostWrite
-	if post.Run == "never" {
-		return nil
-	}
-	if post.Run != "always" && !routerChanged {
-		return nil
-	}
-	timeout := time.Duration(post.Timeout)
-	for _, command := range post.Commands {
-		start := time.Now()
-		result, err := runner.Run(ctx, command, timeout)
-		entry := report.Command{
-			Command:    command,
-			ExitCode:   result.ExitCode,
-			Stdout:     result.Stdout,
-			Stderr:     result.Stderr,
-			DurationMS: time.Since(start).Milliseconds(),
-		}
-		if err != nil {
-			entry.Error = err.Error()
-		}
-		rep.Commands = append(rep.Commands, entry)
-		if err != nil {
-			return withCode(5, fmt.Errorf("command %q: %w", command, err))
-		}
-		if result.ExitCode != 0 {
-			return withCode(5, fmt.Errorf("command %q: exit %d: %s", command, result.ExitCode, strings.TrimSpace(result.Stderr)))
-		}
-	}
-	return nil
-}
-
 func reportMoves(moves []domainlist.Move) []report.Move {
 	result := make([]report.Move, 0, len(moves))
 	for _, move := range moves {
@@ -251,18 +322,63 @@ func appendLog(cfg *config.Config, rep *report.Report) error {
 }
 
 func logLine(rep *report.Report) string {
+	counts := sumDeltas(rep)
 	fields := []string{
 		time.Now().Format(time.RFC3339),
 		"ok=" + strconv.FormatBool(rep.OK),
 		"changed=" + strconv.FormatBool(rep.Changed),
 		"total=" + strconv.Itoa(rep.Total),
 		"sections=" + strconv.Itoa(rep.Sections),
-		"router_added=" + strconv.Itoa(len(rep.Router.Added)),
-		"router_removed=" + strconv.Itoa(len(rep.Router.Removed)),
-		"local_added=" + strconv.Itoa(len(rep.Local.Added)),
-		"local_removed=" + strconv.Itoa(len(rep.Local.Removed)),
-		"moved=" + strconv.Itoa(len(rep.Local.Moved)),
-		"commands=" + strconv.Itoa(len(rep.Commands)),
+		"servers=" + serverFlags(rep),
+		"router_added=" + strconv.Itoa(counts.routerAdded),
+		"router_removed=" + strconv.Itoa(counts.routerRemoved),
+		"local_added=" + strconv.Itoa(counts.localAdded),
+		"local_removed=" + strconv.Itoa(counts.localRemoved),
+		"moved=" + strconv.Itoa(counts.moved),
+		"commands=" + strconv.Itoa(counts.commands),
 	}
 	return strings.Join(fields, " ") + "\n"
+}
+
+type deltaCounts struct {
+	routerAdded   int
+	routerRemoved int
+	localAdded    int
+	localRemoved  int
+	moved         int
+	commands      int
+}
+
+func sumDeltas(rep *report.Report) deltaCounts {
+	var counts deltaCounts
+	for _, server := range rep.Servers {
+		counts.commands += len(server.Commands)
+		for _, file := range server.Files {
+			if file.Router != nil {
+				counts.routerAdded += len(file.Router.Added)
+				counts.routerRemoved += len(file.Router.Removed)
+			}
+			if file.Local != nil {
+				counts.localAdded += len(file.Local.Added)
+				counts.localRemoved += len(file.Local.Removed)
+				counts.moved += len(file.Local.Moved)
+			}
+		}
+	}
+	return counts
+}
+
+func serverFlags(rep *report.Report) string {
+	flags := make([]string, 0, len(rep.Servers))
+	for _, server := range rep.Servers {
+		state := "ok"
+		switch {
+		case server.Skipped:
+			state = "skipped"
+		case !server.OK:
+			state = "fail"
+		}
+		flags = append(flags, server.Name+"="+state)
+	}
+	return strings.Join(flags, ",")
 }

@@ -48,22 +48,29 @@ func validate(configPath string) (*validateOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	data, err := readLocal(cfg.Source.Domains)
-	if err != nil {
-		return nil, err
+	res := &validateOutput{OK: true, Config: cfg.Path()}
+	for _, server := range cfg.Servers {
+		if !server.IsEnabled() {
+			continue
+		}
+		for _, pair := range server.Files {
+			data, err := readLocal(pair.Source)
+			if err != nil {
+				return nil, err
+			}
+			local, err := domainlist.ParseLocal(data, pair.Source)
+			if err != nil {
+				return nil, withCode(2, err)
+			}
+			if res.Domains == "" {
+				res.Domains = pair.Source
+			}
+			total, sections := localCounts(local)
+			res.Total += total
+			res.Sections += sections
+		}
 	}
-	local, err := domainlist.ParseLocal(data, cfg.Source.Domains)
-	if err != nil {
-		return nil, withCode(2, err)
-	}
-	total, sections := localCounts(local)
-	return &validateOutput{
-		OK:       true,
-		Config:   cfg.Path(),
-		Domains:  cfg.Source.Domains,
-		Total:    total,
-		Sections: sections,
-	}, nil
+	return res, nil
 }
 
 func localCounts(file *domainlist.LocalFile) (total, sections int) {

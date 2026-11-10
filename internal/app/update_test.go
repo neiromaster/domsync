@@ -245,7 +245,7 @@ func TestSyncUpdateCheckAttachesUpdateInfo(t *testing.T) {
 		ConfigPath:  cfgPath,
 		CheckUpdate: true,
 		Checker:     stubChecker(t, srv),
-	}, func(context.Context, config.Config) (Runner, error) { return f, nil })
+	}, func(context.Context, config.Server) (Runner, error) { return f, nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +263,7 @@ func TestSyncUpdateCheckRunsOnDryRun(t *testing.T) {
 		DryRun:      true,
 		CheckUpdate: true,
 		Checker:     stubChecker(t, srv),
-	}, func(context.Context, config.Config) (Runner, error) { return f, nil })
+	}, func(context.Context, config.Server) (Runner, error) { return f, nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +290,7 @@ func TestSyncUpdateCheckSkippedWhenDisabled(t *testing.T) {
 	if err := os.WriteFile(cfgPath, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	dial := func(context.Context, config.Config) (Runner, error) { return f, nil }
+	dial := func(context.Context, config.Server) (Runner, error) { return f, nil }
 	rep, err := Sync(t.Context(), SyncOptions{ConfigPath: cfgPath, CheckUpdate: true, Checker: checker}, dial)
 	if err != nil {
 		t.Fatal(err)
@@ -321,7 +321,7 @@ func TestSyncUpdateCheckErrorWarnsOnlyInVerbose(t *testing.T) {
 	}))
 	defer srv.Close()
 	cfgPath, f := setup(t, "[media]\n+.a.com\n", "# [media]\n+.a.com\n")
-	dial := func(context.Context, config.Config) (Runner, error) { return f, nil }
+	dial := func(context.Context, config.Server) (Runner, error) { return f, nil }
 	rep, err := Sync(t.Context(), SyncOptions{
 		ConfigPath:  cfgPath,
 		CheckUpdate: true,
@@ -374,8 +374,8 @@ func TestUpdateNotification(t *testing.T) {
 	if err := os.WriteFile(local, []byte("[media]\n+.a.com\n+.b.com\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := "version: 1\nsource:\n  domains: ./domains.txt\ntarget:\n  host: " + env.Host +
-		"\n  port: " + itoa(env.Port) + "\n  user: u\n  ssh_key: ./key\n  known_hosts: ./known_hosts\n  path: " + remote + "\n"
+	cfg := "version: 2\nservers:\n  - name: router\n    host: " + env.Host +
+		"\n    port: " + itoa(env.Port) + "\n    user: u\n    ssh_key: ./key\n    known_hosts: ./known_hosts\n    files:\n      - source: ./domains.txt\n        target: " + remote + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "domsync.yaml"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -30,8 +30,8 @@ func TestE2E(t *testing.T) {
 	if err := os.WriteFile(local, []byte("[media]\n+.bitru.org\n+.new.example\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := "version: 1\nsource:\n  domains: ./domains.txt\ntarget:\n  host: " + env.Host +
-		"\n  port: " + itoa(env.Port) + "\n  user: u\n  ssh_key: ./key\n  known_hosts: ./known_hosts\n  path: " + remote + "\n"
+	cfg := "version: 2\nservers:\n  - name: router\n    host: " + env.Host +
+		"\n    port: " + itoa(env.Port) + "\n    user: u\n    ssh_key: ./key\n    known_hosts: ./known_hosts\n    files:\n      - source: ./domains.txt\n        target: " + remote + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "domsync.yaml"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
