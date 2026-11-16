@@ -6,11 +6,11 @@ toolchain go1.27.3
 
 require (
 	github.com/alecthomas/kong v1.17.0
-	github.com/gofrs/flock v0.13.1
+	github.com/gofrs/flock v0.13.2
 	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/crypto v0.58.1-0.20261009181718-2f1f834330b2
 	golang.org/x/mod v0.42.0
-	golang.org/x/sys v0.49.0
+	golang.org/x/sys v0.50.0
 	golang.org/x/term v0.47.0
 )
 
